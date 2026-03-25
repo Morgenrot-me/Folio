@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../home/home_screen.dart';
+import '../gallery/gallery_screen.dart';
 import '../folders/folders_screen.dart';
 
 class RootScreen extends StatefulWidget {
@@ -14,6 +15,7 @@ class _RootScreenState extends State<RootScreen> {
   
   final List<Widget> _pages = const [
     HomeScreen(),
+    GalleryScreen(),
     FoldersScreen(),
     Center(child: Text("应用设置", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold))),
   ];
@@ -38,12 +40,17 @@ class _RootScreenState extends State<RootScreen> {
         child: ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           child: BottomNavigationBar(
+            type: BottomNavigationBarType.fixed,
             currentIndex: _currentIndex,
             onTap: (index) => setState(() => _currentIndex = index),
             items: const [
               BottomNavigationBarItem(
                 icon: Icon(Icons.dashboard_rounded),
                 label: '大盘总览',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.photo_library_rounded),
+                label: '相册时光轴',
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.folder_special_rounded),

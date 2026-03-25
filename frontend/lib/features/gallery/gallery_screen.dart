@@ -1,0 +1,69 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:drift/drift.dart' as drift;
+import '../../core/database/app_database.dart';
+import 'image_detail_screen.dart';
+
+class GalleryScreen extends StatelessWidget {
+  const GalleryScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final db = context.read<AppDatabase>();
+    
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('所有相片核心特征库'),
+      ),
+      body: StreamBuilder(
+        stream: (db.select(db.images)..orderBy([(t) => drift.OrderingTerm.desc(t.indexedAt)])).watch(),
+        builder: (context, AsyncSnapshot snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final images = snapshot.data ?? [];
+          if (images.isEmpty) {
+            return const Center(
+              child: Text('您还没扫描任何相片，请回大盘猛点扫描按钮！', 
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey)
+              )
+            );
+          }
+          
+          return GridView.builder(
+            padding: const EdgeInsets.all(4),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 4,
+              mainAxisSpacing: 4,
+            ),
+            itemCount: images.length,
+            itemBuilder: (context, index) {
+              final imgData = images[index];
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => ImageDetailScreen(imageRow: imgData)
+                  ));
+                },
+                child: Hero(
+                  tag: imgData.id,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(
+                      File(imgData.filePath),
+                      fit: BoxFit.cover,
+                      cacheWidth: 300, // 高能防爆内存：仅缓存低分辨率图表！
+                      errorBuilder: (ctx, err, stack) => Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}

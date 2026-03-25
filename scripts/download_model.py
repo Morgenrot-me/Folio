@@ -10,9 +10,9 @@ def download_model():
     if os.path.exists(model_path):
         os.remove(model_path) # 确保持续更新
 
-    # 利用用户畅通的外网环境直接下载真正的 MobileCLIP S2 (移动端极速版)
-    url = "https://huggingface.co/anton96vice/mobileclip2_tflite/resolve/main/mobileclip_s2_datacompdr_last.tflite"
-    print(f"🚀 开始通过直连拉取正宗的 MobileCLIP 边缘推理模型...")
+    # 响应瘦身需求，更换为 MobileCLIP S0 (体积缩减极为夸张，仅需几十MB，极适合移动端纯单机推理)
+    url = "https://huggingface.co/anton96vice/mobileclip2_tflite/resolve/main/mobileclip_s0_datacompdr_last.tflite"
+    print(f"🚀 开始通过直连拉取 MobileCLIP S0 极致瘦身版推理模型...")
     print(f"网络源: {url}")
     
     try:
