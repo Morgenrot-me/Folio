@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../home/home_screen.dart';
+import '../folders/folders_screen.dart';
 
 class RootScreen extends StatefulWidget {
   const RootScreen({super.key});
@@ -13,7 +14,7 @@ class _RootScreenState extends State<RootScreen> {
   
   final List<Widget> _pages = const [
     HomeScreen(),
-    Center(child: Text("智能分类", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold))),
+    FoldersScreen(),
     Center(child: Text("应用设置", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold))),
   ];
 
