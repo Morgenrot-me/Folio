@@ -33,20 +33,20 @@ class FeatureExtractorService {
   }
 
   /// 核心调度方法：对单张图片执行全部特征抽取（文字、截图判断、模糊度、主色调、语义向量）并落库
-  Future<void> extractFeaturesForImage(String imageId, String filePath) async {
+  Future<void> extractFeaturesForImage(String imageId, String filePath, [Uint8List? thumbBytes]) async {
     final file = File(filePath);
     if (!await file.exists()) return;
 
-    // 1. 文字检测 (ML Kit)
+    // 1. 文字检测 (ML Kit) - ML Kit 底层做了 C++ 内存复用防抖，可直接喂原文件
     bool hasText = await _detectText(file);
 
     // 2. 简易截图检测 (基于常见的截图命名路径及文件名)
     bool isScreenshot = filePath.toLowerCase().contains('screenshot');
 
     // 3. 图像像素特征解析 (基于 image 库计算颜色和清晰度)
-    // 强制放入 compute 子线程，否则解码 4K 原图会使 UI 严重掉帧卡死
-    final imageBytes = await file.readAsBytes();
-    final decodedImage = await compute(img.decodeImage, imageBytes);
+    // 【致命闪退修复】：优先解析缩略图(thumbBytes)！如果按原路直接把原生几千万像素的 4K 照片转码，内存会飙升 200MB 以上直接被系统 OOM 查杀闪退！
+    final targetBytes = thumbBytes ?? await file.readAsBytes();
+    final decodedImage = await compute(img.decodeImage, targetBytes);
     
     double blurScore = 0.0;
     double colorWarmth = 0.0;
