@@ -19,8 +19,8 @@ class FeatureExtractorService {
   /// 初始化 TFLite 模型
   Future<void> initModel() async {
     try {
-      // 模型应放置于 assets/models/mobileclip.tflite
-      _interpreter = await Interpreter.fromAsset('assets/models/mobileclip.tflite');
+      // 载入极限瘦身版的 MobileNet 引擎 
+      _interpreter = await Interpreter.fromAsset('assets/models/mobilenet.tflite');
     } catch (e) {
       debugPrint('Error loading TFLite model: $e');
     }
@@ -119,23 +119,16 @@ class FeatureExtractorService {
   }
 
   static Float32List _prepareTensorInput(img.Image decodedImage) {
-    // MobileCLIP S2 专门为移动端设计，其原神输入规格为 256x256
-    final resized = img.copyResize(decodedImage, width: 256, height: 256);
-    var inputList = Float32List(1 * 256 * 256 * 3);
+    // 💡 EfficientNet Lite0 模型专属的完美黄金裁切维度为 224x224
+    final resized = img.copyResize(decodedImage, width: 224, height: 224);
+    var inputList = Float32List(1 * 224 * 224 * 3);
     int pixelIndex = 0;
     
-    // OpenAI CLIP 标准的图像像素归一化均值和标准差 (MobileCLIP 源于此协议)
-    const meanR = 0.48145466;
-    const meanG = 0.45782750;
-    const meanB = 0.40821073;
-    const stdR = 0.26862954;
-    const stdG = 0.26130258;
-    const stdB = 0.27577711;
-
+    // 💡 标准输入通常需要映射到 [-1.0, 1.0] 的浮点空间内
     for (final p in resized) {
-      inputList[pixelIndex++] = ((p.r / 255.0) - meanR) / stdR;
-      inputList[pixelIndex++] = ((p.g / 255.0) - meanG) / stdG;
-      inputList[pixelIndex++] = ((p.b / 255.0) - meanB) / stdB;
+      inputList[pixelIndex++] = (p.r / 127.5) - 1.0;
+      inputList[pixelIndex++] = (p.g / 127.5) - 1.0;
+      inputList[pixelIndex++] = (p.b / 127.5) - 1.0;
     }
     return inputList;
   }
@@ -147,9 +140,9 @@ class FeatureExtractorService {
       final inputList = await compute(_prepareTensorInput, decodedImage);
       
       // Reshape 成底层 C++ Tensor 库所需的三维立方体批次： [B, H, W, C]
-      var input = inputList.buffer.asFloat32List().reshape([1, 256, 256, 3]);
-      // MobileCLIP 系列产出的特征量仍然是通用的 512 维！
-      var output = List.filled(1 * 512, 0.0).reshape([1, 512]);
+      var input = inputList.buffer.asFloat32List().reshape([1, 224, 224, 3]);
+      // 💡 取出 ImageNet 千类分发概率阵列 (1000 维) 来充当照片的万能聚类特征向量基准！
+      var output = List.filled(1 * 1000, 0.0).reshape([1, 1000]);
       
       _interpreter!.run(input, output);
       

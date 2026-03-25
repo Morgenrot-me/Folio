@@ -33,7 +33,7 @@ class ImageDetailScreen extends StatelessWidget {
                   _buildFeatureTile(context, Icons.lens_blur_rounded, '拉普拉斯局部梯度的方差 (清晰度/模糊度)', '${imageRow.blurScore.toStringAsFixed(2)}'),
                   _buildFeatureTile(context, Icons.text_snippet_rounded, 'OCR Google 结构文字检出', imageRow.hasText ? '检测出大量字符体' : '未见有效字符'),
                   _buildFeatureTile(context, Icons.screenshot_rounded, '基础系统系统快捷截图判定', imageRow.isScreenshot ? '是系统截图' : '纯相机拍摄照片'),
-                  _buildFeatureTile(context, Icons.auto_awesome_mosaic_rounded, 'AI 多模态大模型 512维语义量词张量 (TFLite)', imageRow.semanticVector.isNotEmpty ? '向量已被高密度挤压存入底层' : '尚处于等待处理的原始态队列中'),
+                  _buildFeatureTile(context, Icons.auto_awesome_mosaic_rounded, '极速 AI 引擎特征张量池 (TFLite)', imageRow.semanticVector.isNotEmpty ? '机器理解量词已被高密度挤压并入库' : '尚处于等待处理的原始态队列中'),
                   
                   const SizedBox(height: 40),
                   

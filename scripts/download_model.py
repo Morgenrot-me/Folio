@@ -7,12 +7,14 @@ def download_model():
     os.makedirs(model_dir, exist_ok=True)
     
     model_path = os.path.join(model_dir, "mobileclip.tflite")
+    # 统一命名为 mobilenet.tflite
+    model_path = os.path.join(model_dir, "mobilenet.tflite")
     if os.path.exists(model_path):
         os.remove(model_path) # 确保持续更新
 
-    # 响应瘦身需求，更换为 MobileCLIP S0 (体积缩减极为夸张，仅需几十MB，极适合移动端纯单机推理)
-    url = "https://huggingface.co/anton96vice/mobileclip2_tflite/resolve/main/mobileclip_s0_datacompdr_last.tflite"
-    print(f"🚀 开始通过直连拉取 MobileCLIP S0 极致瘦身版推理模型...")
+    # 连接 Google Cloud Storage 官方核心存储直连拉取极致性能版 MobileNet V3
+    url = "https://storage.googleapis.com/mediapipe-models/image_classifier/efficientnet_lite0/float32/latest/efficientnet_lite0.tflite"
+    print(f"🚀 开始通过云直连拉取体积仅有十几 MB 的『极速低功耗版』网络特征解构引擎...")
     print(f"网络源: {url}")
     
     try:
@@ -23,8 +25,15 @@ def download_model():
             out_file.write(data)
             
         size_mb = os.path.getsize(model_path) / (1024 * 1024)
-        print(f"✅ 下载并配置成功！文件已存盘至: {model_path}")
-        print(f"📊 模型体积: {size_mb:.2f} MB")
+        print(f"✅ 下载并极致瘦身成功！新引擎已安放至: {model_path}")
+        print(f"📊 新模型极简体积: {size_mb:.2f} MB")
+        
+        # 把刚才那个几乎会让所有弱设备卡爆的旧模型遗体给挫骨扬灰
+        old_model = os.path.join(model_dir, "mobileclip.tflite")
+        if os.path.exists(old_model):
+            os.remove(old_model)
+            print(f"🗑️ 已为您摧毁清除了旧版本的庞大 MobileCLIP 黑洞文件！您的储存空间得救了。")
+            
     except Exception as e:
         print(f"❌ 下载发生错误，报错信息: {e}")
 
