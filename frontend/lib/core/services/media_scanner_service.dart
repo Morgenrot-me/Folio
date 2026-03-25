@@ -57,7 +57,10 @@ class MediaScannerService {
           height: entity.height,
           fileSize: (await file.length()),
           indexedAt: DateTime.now().millisecondsSinceEpoch,
-          // 特征均采用默认空值或默认 false，后续队列处理
+          blurScore: 0.0,
+          dominantHue: 0.0,
+          colorWarmth: 0.0,
+          semanticVector: Uint8List(0), // 提供一个空的初始向量
         ),
       );
     }
