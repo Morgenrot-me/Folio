@@ -118,27 +118,33 @@ class FeatureExtractorService {
     return variance; // 方差越小说明梯度变化越均衡，图片越模糊
   }
 
+  static Float32List _prepareTensorInput(img.Image decodedImage) {
+    // MobileCLIP S2 专门为移动端设计，其原神输入规格为 256x256
+    final resized = img.copyResize(decodedImage, width: 256, height: 256);
+    var inputList = Float32List(1 * 256 * 256 * 3);
+    int pixelIndex = 0;
+    
+    // OpenAI CLIP 标准的图像像素归一化均值和标准差 (MobileCLIP 源于此协议)
+    const meanR = 0.48145466;
+    const meanG = 0.45782750;
+    const meanB = 0.40821073;
+    const stdR = 0.26862954;
+    const stdG = 0.26130258;
+    const stdB = 0.27577711;
+
+    for (final p in resized) {
+      inputList[pixelIndex++] = ((p.r / 255.0) - meanR) / stdR;
+      inputList[pixelIndex++] = ((p.g / 255.0) - meanG) / stdG;
+      inputList[pixelIndex++] = ((p.b / 255.0) - meanB) / stdB;
+    }
+    return inputList;
+  }
+
   Future<Uint8List?> _extractSemanticVector(img.Image decodedImage) async {
     if (_interpreter == null) return null;
     try {
-      // MobileCLIP S2 专门为移动端设计，其原神输入规格为 256x256
-      final resized = img.copyResize(decodedImage, width: 256, height: 256);
-      var inputList = Float32List(1 * 256 * 256 * 3);
-      int pixelIndex = 0;
-      
-      // OpenAI CLIP 标准的图像像素归一化均值和标准差 (MobileCLIP 源于此协议)
-      const meanR = 0.48145466;
-      const meanG = 0.45782750;
-      const meanB = 0.40821073;
-      const stdR = 0.26862954;
-      const stdG = 0.26130258;
-      const stdB = 0.27577711;
-
-      for (final p in resized) {
-        inputList[pixelIndex++] = ((p.r / 255.0) - meanR) / stdR;
-        inputList[pixelIndex++] = ((p.g / 255.0) - meanG) / stdG;
-        inputList[pixelIndex++] = ((p.b / 255.0) - meanB) / stdB;
-      }
+      // 通过子线程隔离，防止长达几万次的 Dart 原生 for 循环将主 UI 线程死锁而导致严重掉帧
+      final inputList = await compute(_prepareTensorInput, decodedImage);
       
       // Reshape 成底层 C++ Tensor 库所需的三维立方体批次： [B, H, W, C]
       var input = inputList.buffer.asFloat32List().reshape([1, 256, 256, 3]);
