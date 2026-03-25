@@ -35,10 +35,17 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
         }
     }
 }
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // 强制依赖捆绑：由于国内几乎所有手机无法连通 Google Play 框架去动态下载模型体系，
+    // 我们必须将这 20MB 的中文字符脱机识别模块硬编码捆绑进入 APK 实体内，保障万无一失。
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
 }

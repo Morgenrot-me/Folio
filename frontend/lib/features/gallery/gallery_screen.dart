@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drift/drift.dart' as drift;
-import '../../core/database/app_database.dart';
+import '../../core/database/app_database.dart' hide Image;
 import 'image_detail_screen.dart';
 
 class GalleryScreen extends StatelessWidget {
