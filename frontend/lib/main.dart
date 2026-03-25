@@ -29,7 +29,7 @@ class SmartGalleryApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Smart Gallery',
+      title: '智能图库',
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.system, // 支持系统自动深色模式切换

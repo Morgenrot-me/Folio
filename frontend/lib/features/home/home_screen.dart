@@ -10,7 +10,7 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard'),
+        title: const Text('大盘概览'),
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -18,7 +18,7 @@ class HomeScreen extends StatelessWidget {
           _buildHeroCard(context),
           const SizedBox(height: 24),
           Text(
-            '快捷操作 (Quick Actions)',
+            '快捷操作',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
@@ -44,7 +44,7 @@ class HomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           Text(
-            '近期流转视图',
+            '近期已索引特征照片',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),

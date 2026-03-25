@@ -13,8 +13,8 @@ class _RootScreenState extends State<RootScreen> {
   
   final List<Widget> _pages = const [
     HomeScreen(),
-    Center(child: Text("Folders", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold))),
-    Center(child: Text("Settings", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold))),
+    Center(child: Text("智能分类", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold))),
+    Center(child: Text("应用设置", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold))),
   ];
 
   @override
@@ -42,15 +42,15 @@ class _RootScreenState extends State<RootScreen> {
             items: const [
               BottomNavigationBarItem(
                 icon: Icon(Icons.dashboard_rounded),
-                label: 'Dashboard',
+                label: '大盘总览',
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.folder_special_rounded),
-                label: 'Folders',
+                label: '智能分类',
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.settings_rounded),
-                label: 'Settings',
+                label: '设置',
               ),
             ],
           ),
