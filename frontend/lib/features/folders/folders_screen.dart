@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/database/app_database.dart';
+import 'create_folder_screen.dart';
 
 class FoldersScreen extends StatelessWidget {
   const FoldersScreen({super.key});
@@ -50,9 +51,7 @@ class FoldersScreen extends StatelessWidget {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('创建向导与节点树UI开发中...')),
-          );
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const CreateFolderScreen()));
         },
         icon: const Icon(Icons.create_new_folder_rounded),
         label: const Text('新建分类'),
