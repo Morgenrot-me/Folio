@@ -3,11 +3,13 @@ import 'package:crypto/crypto.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../database/app_database.dart';
 import 'package:drift/drift.dart';
+import 'feature_extractor_service.dart';
 
 class MediaScannerService {
   final AppDatabase database;
+  final FeatureExtractorService extractor;
 
-  MediaScannerService(this.database);
+  MediaScannerService(this.database, this.extractor);
 
   /// 请求权限并全量扫描一次相册（获取未索引的图片对象）
   Future<void> scanAndIndexNewImages() async {
@@ -63,6 +65,13 @@ class MediaScannerService {
           semanticVector: Uint8List(0), // 提供一个空的初始向量
         ),
       );
+
+      // --- 👇 核心防沉降：触发特征提取流水线！ ---
+      // 在底层写入库后，立刻启动极为狂暴的单机分析流（模糊度方差+MLKit 文字+TFLite 张量），此方法会自动 Update 到行库中。
+      await extractor.extractFeaturesForImage(idHash, file.absolute.path);
+    } else if (existing.blurScore == 0.0 && existing.semanticVector.isEmpty) {
+      // 针对之前只有空壳元数据而未能跑过 AI 分析流水线的老纪录，进行静默的特征增补提取！
+      await extractor.extractFeaturesForImage(idHash, file.absolute.path);
     }
   }
 }

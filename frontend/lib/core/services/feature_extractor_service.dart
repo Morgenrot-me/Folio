@@ -44,20 +44,23 @@ class FeatureExtractorService {
     bool isScreenshot = filePath.toLowerCase().contains('screenshot');
 
     // 3. 图像像素特征解析 (基于 image 库计算颜色和清晰度)
+    // 强制放入 compute 子线程，否则解码 4K 原图会使 UI 严重掉帧卡死
     final imageBytes = await file.readAsBytes();
-    final decodedImage = img.decodeImage(imageBytes);
+    final decodedImage = await compute(img.decodeImage, imageBytes);
     
     double blurScore = 0.0;
     double colorWarmth = 0.0;
     double dominantHue = 0.0;
+    Uint8List? semanticVector;
     
     if (decodedImage != null) {
-      blurScore = _calculateBlurScore(decodedImage);
-      // TODO: _calculateColorFeatures
+      // 在计算前，如果图片太大，可选择先将整图缩到极限尺寸规避爆内存
+      blurScore = await compute(_calculateBlurScore, decodedImage);
+      // TODO: 色调统计算法后续加入，此处先行置位
+      
+      // 4. 语义向量推理 (TFLite)
+      semanticVector = await _extractSemanticVector(decodedImage);
     }
-
-    // 4. 语义向量推理 (TFLite)
-    Uint8List? semanticVector = await _extractSemanticVector(file);
 
     // 5. 更新回数据库
     await (database.update(database.images)..where((tbl) => tbl.id.equals(imageId))).write(
@@ -84,14 +87,72 @@ class FeatureExtractorService {
     }
   }
 
-  double _calculateBlurScore(img.Image image) {
-    // TODO: 实现精准的拉普拉斯边缘方差检测
-    return 100.0; 
+  static double _calculateBlurScore(img.Image image) {
+    // 为提升计算速度，先将图片缩放到较小尺寸(如 256x256)后再应用边缘检测
+    final resized = img.copyResize(image, width: 256, height: 256);
+    final gray = img.grayscale(resized);
+    
+    // 手动计算局部 Laplacian Variance (拉普拉斯算子方差)
+    double sum = 0;
+    double sqSum = 0;
+    int count = 0;
+    
+    for (int y = 1; y < gray.height - 1; y++) {
+      for (int x = 1; x < gray.width - 1; x++) {
+        // Laplacian kernel: [0, 1, 0,  1, -4, 1,  0, 1, 0]
+        num top = gray.getPixel(x, y - 1).r;
+        num bottom = gray.getPixel(x, y + 1).r;
+        num left = gray.getPixel(x - 1, y).r;
+        num right = gray.getPixel(x + 1, y).r;
+        num center = gray.getPixel(x, y).r;
+        
+        double laplacian = top.toDouble() + bottom.toDouble() + left.toDouble() + right.toDouble() - (4 * center.toDouble());
+        sum += laplacian;
+        sqSum += laplacian * laplacian;
+        count++;
+      }
+    }
+    if (count == 0) return 0.0;
+    double mean = sum / count;
+    double variance = (sqSum / count) - (mean * mean);
+    return variance; // 方差越小说明梯度变化越均衡，图片越模糊
   }
 
-  Future<Uint8List?> _extractSemanticVector(File file) async {
+  Future<Uint8List?> _extractSemanticVector(img.Image decodedImage) async {
     if (_interpreter == null) return null;
-    // TODO: 执行 MobileCLIP 的 Tensor 图像前处理、推理调用，最后转化出字节串
-    return null; 
+    try {
+      // MobileCLIP S2 专门为移动端设计，其原神输入规格为 256x256
+      final resized = img.copyResize(decodedImage, width: 256, height: 256);
+      var inputList = Float32List(1 * 256 * 256 * 3);
+      int pixelIndex = 0;
+      
+      // OpenAI CLIP 标准的图像像素归一化均值和标准差 (MobileCLIP 源于此协议)
+      const meanR = 0.48145466;
+      const meanG = 0.45782750;
+      const meanB = 0.40821073;
+      const stdR = 0.26862954;
+      const stdG = 0.26130258;
+      const stdB = 0.27577711;
+
+      for (final p in resized) {
+        inputList[pixelIndex++] = ((p.r / 255.0) - meanR) / stdR;
+        inputList[pixelIndex++] = ((p.g / 255.0) - meanG) / stdG;
+        inputList[pixelIndex++] = ((p.b / 255.0) - meanB) / stdB;
+      }
+      
+      // Reshape 成底层 C++ Tensor 库所需的三维立方体批次： [B, H, W, C]
+      var input = inputList.buffer.asFloat32List().reshape([1, 256, 256, 3]);
+      // MobileCLIP 系列产出的特征量仍然是通用的 512 维！
+      var output = List.filled(1 * 512, 0.0).reshape([1, 512]);
+      
+      _interpreter!.run(input, output);
+      
+      final outputVector = (output[0] as List<double>).cast<double>();
+      final bytes = Float32List.fromList(outputVector).buffer.asUint8List();
+      return bytes;
+    } catch(e) {
+      debugPrint("TFLite 推理遭遇错误: $e");
+      return null;
+    }
   }
 }
