@@ -18,6 +18,13 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   int get schemaVersion => 1;
+
+  // 监听所有被索引的图片张数，形成动态流
+  Stream<int> watchTotalImagesCount() {
+    final countExp = images.id.count();
+    final query = selectOnly(images)..addColumns([countExp]);
+    return query.map((row) => row.read(countExp)!).watchSingle();
+  }
 }
 
 LazyDatabase _openConnection() {
