@@ -74,8 +74,8 @@ class FeatureExtractorService {
         indexed.sort((a, b) => b.value.compareTo(a.value));
         
         List<String> topTags = [];
-        // 我们只取置信度最高的前 3 个物体名词！
-        for (int i = 0; i < 3; i++) {
+        // 热更新：听从用户指令，一口气多抓取一倍标签，取前 6 个物体名词！
+        for (int i = 0; i < 6; i++) {
           if (indexed[i].key < ImageNetLabels.labels.length) {
              topTags.add(ImageNetLabels.labels[indexed[i].key]);
           }
