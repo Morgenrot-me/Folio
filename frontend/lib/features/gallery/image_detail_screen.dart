@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 class ImageDetailScreen extends StatelessWidget {
@@ -30,14 +31,14 @@ class ImageDetailScreen extends StatelessWidget {
                 children: [
                   Text('💡 底层机器视觉提取特征', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
                   const SizedBox(height: 16),
-                  _buildFeatureTile(context, Icons.lens_blur_rounded, '拉普拉斯局部梯度的方差 (清晰度/模糊度)', '${imageRow.blurScore.toStringAsFixed(2)}'),
-                  _buildFeatureTile(context, Icons.text_snippet_rounded, 'OCR Google 结构文字检出', imageRow.hasText ? '检测出大量字符体' : '未见有效字符'),
-                  _buildFeatureTile(context, Icons.screenshot_rounded, '基础系统系统快捷截图判定', imageRow.isScreenshot ? '是系统截图' : '纯相机拍摄照片'),
-                  _buildFeatureTile(context, Icons.auto_awesome_mosaic_rounded, '极速 AI 引擎特征张量池 (TFLite)', imageRow.semanticVector.isNotEmpty ? '机器理解量词已被高密度挤压并入库' : '尚处于等待处理的原始态队列中'),
+                  _buildFeatureTile(context, Icons.lens_blur_rounded, '拉普拉斯方差 (模糊度)', '${imageRow.blurScore.toStringAsFixed(2)}'),
+                  _buildFeatureTile(context, Icons.text_snippet_rounded, 'OCR 文字检出', imageRow.hasText ? '是' : '否'),
+                  _buildFeatureTile(context, Icons.screenshot_rounded, '截图判定', imageRow.isScreenshot ? '是' : '否'),
+                  _buildFeatureTile(context, Icons.auto_awesome_mosaic_rounded, '特征张量 (TFLite)', _getVectorPreview(imageRow.semanticVector)),
                   
                   const SizedBox(height: 40),
                   
-                  Text('📋 相机元数据探针', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  Text('文件元数据', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   _buildFeatureTile(context, Icons.photo_size_select_actual_rounded, '照片物理分辨率', '${imageRow.width} x ${imageRow.height}'),
                   _buildFeatureTile(context, Icons.sd_storage_rounded, '纯体积大小', '${(imageRow.fileSize / 1024 / 1024).toStringAsFixed(2)} MB'),
@@ -79,5 +80,18 @@ class ImageDetailScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _getVectorPreview(dynamic semanticVector) {
+    if (semanticVector == null || semanticVector.isEmpty) {
+      return '尚未提取或提取失败';
+    }
+    try {
+      final floats = Float32List.view(semanticVector.buffer);
+      final preview = floats.take(4).map((e) => e.toStringAsFixed(3)).join(', ');
+      return '已提取 ${floats.length} 维 [ $preview ... ]';
+    } catch (e) {
+      return '数据格式异常';
+    }
   }
 }

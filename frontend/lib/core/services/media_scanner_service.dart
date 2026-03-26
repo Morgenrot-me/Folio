@@ -73,8 +73,8 @@ class MediaScannerService {
       
       // 每张图跑完，给系统底层 30 毫秒的时间喘息渲染 UI（让出主线程 Event Loop），彻底告别主页转盘卡死现象！
       await Future.delayed(const Duration(milliseconds: 30));
-    } else if (existing.blurScore == 0.0 && existing.semanticVector.isEmpty) {
-      // 针对之前只有空壳元数据而未能跑过 AI 分析流水线的老纪录，进行静默的特征增补提取！
+    } else if (existing.blurScore == 0.0 || existing.semanticVector.isEmpty) {
+      // 针对之前只有空壳元数据而未能跑过 AI 分析或者中途因为没下好模型而翻车的纪录，进行静默特征增补！
       final thumbBytes = await entity.thumbnailDataWithSize(const ThumbnailSize(512, 512));
       await extractor.extractFeaturesForImage(idHash, file.absolute.path, thumbBytes);
       

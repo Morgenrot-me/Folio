@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../core/database/app_database.dart';
+import 'package:drift/drift.dart' as drift;
+import '../../core/database/app_database.dart' hide Image;
 import '../../core/services/media_scanner_service.dart';
+import '../gallery/image_detail_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -51,25 +54,55 @@ class HomeScreen extends StatelessWidget {
                 ),
           ),
           const SizedBox(height: 16),
-          // 骨架屏演示近期图片坑位
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-            ),
-            itemCount: 6,
-            itemBuilder: (context, index) {
-              return Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(16),
+          StreamBuilder(
+            stream: (database.select(database.images)
+                  ..orderBy([(t) => drift.OrderingTerm.desc(t.indexedAt)])
+                  ..limit(6))
+                .watch(),
+            builder: (context, AsyncSnapshot snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final images = snapshot.data ?? [];
+              if (images.isEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Text('暂无近期入库记录', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5))),
+                  ),
+                );
+              }
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
                 ),
-                child: const Center(
-                  child: Icon(Icons.image_outlined, color: Colors.grey, size: 28),
-                ),
+                itemCount: images.length,
+                itemBuilder: (context, index) {
+                  final imgData = images[index];
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(
+                        builder: (_) => ImageDetailScreen(imageRow: imgData)
+                      ));
+                    },
+                    child: Hero(
+                      tag: 'home_${imgData.id}',
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.file(
+                          File(imgData.filePath),
+                          fit: BoxFit.cover,
+                          cacheWidth: 300,
+                          errorBuilder: (ctx, err, stack) => Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                        ),
+                      ),
+                    ),
+                  );
+                },
               );
             },
           )
