@@ -58,6 +58,33 @@ class AppDatabase extends _$AppDatabase {
       ..where(images.isAnalyzed.equals(true));
     return query.map((row) => row.read(countExp)!).watchSingle();
   }
+
+  /// 监听每个文件夹的已匹配图片数量，返回 Map<folderId, count>
+  Stream<Map<String, int>> watchFolderImageCounts() {
+    final countExp = imageFolderMap.imageId.count();
+    final query = selectOnly(imageFolderMap)
+      ..addColumns([imageFolderMap.folderId, countExp]);
+    query.groupBy([imageFolderMap.folderId]);
+    return query.map((row) {
+      return MapEntry(
+        row.read(imageFolderMap.folderId)!,
+        row.read(countExp)!,
+      );
+    }).watch().map((rows) => Map.fromEntries(rows));
+  }
+
+  /// 监听指定文件夹内的全部图片列表（用于文件夹详情页）
+  Stream<List<Image>> watchImagesInFolder(String folderId) {
+    final query = select(images).join([
+      innerJoin(
+        imageFolderMap,
+        imageFolderMap.imageId.equalsExp(images.id),
+      ),
+    ])
+      ..where(imageFolderMap.folderId.equals(folderId))
+      ..orderBy([OrderingTerm.desc(images.indexedAt)]);
+    return query.map((row) => row.readTable(images)).watch();
+  }
 }
 
 LazyDatabase _openConnection() {

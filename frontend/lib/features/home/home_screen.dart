@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:drift/drift.dart' as drift;
 import '../../core/database/app_database.dart' hide Image;
 import '../../core/services/media_scanner_service.dart';
+import '../../core/services/smart_folder_matcher_service.dart';
 import '../gallery/image_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -22,6 +23,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _isScanning = false;
+  bool _isMatching = false;
 
   @override
   Widget build(BuildContext context) {
@@ -46,20 +48,18 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _buildActionCard(
                 context,
-                icon: _isScanning
-                    ? Icons.hourglass_top_rounded
-                    : Icons.sync_rounded,
+                icon: _isScanning ? Icons.hourglass_top_rounded : Icons.sync_rounded,
                 label: _isScanning ? '扫描中...' : '特征扫描提取',
-                enabled: !_isScanning,
+                enabled: !_isScanning && !_isMatching,
                 onTap: _handleScan,
               ),
               const SizedBox(width: 16),
               _buildActionCard(
                 context,
-                icon: Icons.auto_awesome_rounded,
-                label: '聚类归置',
-                enabled: false, // 功能待实现
-                onTap: () {},
+                icon: _isMatching ? Icons.hourglass_top_rounded : Icons.auto_awesome_rounded,
+                label: _isMatching ? '匹配中...' : '执行规则匹配',
+                enabled: !_isScanning && !_isMatching,
+                onTap: _handleMatch,
               ),
             ],
           ),
@@ -282,7 +282,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _handleScan() async {
-    if (_isScanning) return;
+    if (_isScanning || _isMatching) return;
     setState(() => _isScanning = true);
 
     if (!mounted) return;
@@ -296,7 +296,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('🎉 扫描完成，新增 $newCount 张！')),
+          SnackBar(content: Text('🎉 扫描完成，新增 $newCount 张！已自动触发规则匹配')),
         );
       }
     } catch (e) {
@@ -307,6 +307,34 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } finally {
       if (mounted) setState(() => _isScanning = false);
+    }
+  }
+
+  /// 手动触发规则匹配（不重新扫描）
+  Future<void> _handleMatch() async {
+    if (_isScanning || _isMatching) return;
+    setState(() => _isMatching = true);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('正在执行规则匹配...')),
+    );
+    try {
+      final matcher = context.read<SmartFolderMatcherService>();
+      final matched = await matcher.runMatchForAll();
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('✅ 规则匹配完成，共归类 $matched 张图片')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('匹配失败：$e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isMatching = false);
     }
   }
 }

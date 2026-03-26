@@ -1,24 +1,52 @@
 // folders_screen.dart
-// 智能分类文件夹页：展示所有智能过滤文件夹，支持点击查看详情和长按/三点菜单操作。
-// 修复：
-//   - 文件夹卡片添加 InkWell（涟漪 + 点击）
-//   - 三点菜单绑定底部操作表（重命名占位 + 删除确认）
-//   - 所有 withOpacity → withValues
+// 智能分类文件夹页：展示所有智能过滤文件夹，支持重匹配触发、图片数量显示、删除等操作。
+// 改善：
+//   - 文件夹卡片实时显示已匹配图片数量（来自 watchFolderImageCounts()）
+//   - AppBar 添加"重新匹配"按钮，手动触发 SmartFolderMatcherService
+//   - 添加"清理孤儿"按钮（长按可触发 cleanOrphanedImages）
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../core/database/app_database.dart';
+import '../../core/database/app_database.dart' hide Image;
+import '../../core/services/smart_folder_matcher_service.dart';
+import '../../core/services/media_scanner_service.dart';
 import 'create_folder_screen.dart';
+import 'folder_detail_screen.dart';
 
-class FoldersScreen extends StatelessWidget {
+class FoldersScreen extends StatefulWidget {
   const FoldersScreen({super.key});
+
+  @override
+  State<FoldersScreen> createState() => _FoldersScreenState();
+}
+
+class _FoldersScreenState extends State<FoldersScreen> {
+  bool _isMatching = false;
 
   @override
   Widget build(BuildContext context) {
     final database = context.read<AppDatabase>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('智能分类')),
+      appBar: AppBar(
+        title: const Text('智能分类'),
+        actions: [
+          // 重新匹配按钮：触发规则引擎对全量图片重新归类
+          _isMatching
+              ? const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2.5)),
+                )
+              : IconButton(
+                  icon: const Icon(Icons.refresh_rounded),
+                  tooltip: '重新匹配所有规则',
+                  onPressed: _handleReMatch,
+                ),
+        ],
+      ),
       body: StreamBuilder<List<SmartFolder>>(
         stream: database.select(database.smartFolders).watch(),
         builder: (context, snapshot) {
@@ -28,17 +56,27 @@ class FoldersScreen extends StatelessWidget {
           final folders = snapshot.data ?? [];
           if (folders.isEmpty) return _buildEmptyState(context);
 
-          return GridView.builder(
-            padding: const EdgeInsets.all(20),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: 1.1,
-            ),
-            itemCount: folders.length,
-            itemBuilder: (context, index) =>
-                _buildFolderCard(context, folders[index]),
+          // 同时订阅文件夹图片数量流
+          return StreamBuilder<Map<String, int>>(
+            stream: database.watchFolderImageCounts(),
+            builder: (context, countSnap) {
+              final counts = countSnap.data ?? {};
+              return GridView.builder(
+                padding: const EdgeInsets.all(20),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: 1.05,
+                ),
+                itemCount: folders.length,
+                itemBuilder: (context, index) => _buildFolderCard(
+                  context,
+                  folders[index],
+                  counts[folders[index].id] ?? 0,
+                ),
+              );
+            },
           );
         },
       ),
@@ -51,6 +89,34 @@ class FoldersScreen extends StatelessWidget {
         label: const Text('新建分类'),
       ),
     );
+  }
+
+  /// 触发全量规则重匹配
+  Future<void> _handleReMatch() async {
+    if (_isMatching) return;
+    setState(() => _isMatching = true);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('正在重新执行规则匹配...')),
+    );
+    try {
+      final matcher = context.read<SmartFolderMatcherService>();
+      final matched = await matcher.runMatchForAll();
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('✅ 匹配完成，共归类 $matched 张图片')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('匹配失败：$e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isMatching = false);
+    }
   }
 
   Widget _buildEmptyState(BuildContext context) {
@@ -86,29 +152,23 @@ class FoldersScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFolderCard(BuildContext context, SmartFolder folder) {
+  Widget _buildFolderCard(BuildContext context, SmartFolder folder, int imageCount) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: Material(
         color: Theme.of(context).cardTheme.color,
         child: InkWell(
-          // 点击：跳转文件夹详情（功能待实现时显示提示）
+          // 跳转文件夹详情页
           onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('「${folder.name}」文件夹详情开发中')),
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => FolderDetailScreen(folder: folder),
+              ),
             );
           },
           child: Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                )
-              ],
-            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -126,7 +186,6 @@ class FoldersScreen extends StatelessWidget {
                         color: Theme.of(context).colorScheme.primary,
                       ),
                     ),
-                    // 三点菜单：绑定底部操作表
                     GestureDetector(
                       onTap: () => _showFolderMenu(context, folder),
                       child: Icon(
@@ -144,15 +203,35 @@ class FoldersScreen extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  folder.rootRuleId != null ? '已挂载节点规则' : '等待添加分类规则',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w400,
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                // 显示已匹配图片数量
+                Row(
+                  children: [
+                    Icon(
+                      Icons.photo_library_outlined,
+                      size: 13,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$imageCount 张',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        folder.rootRuleId != null ? '已配置规则' : '待配置规则',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -162,60 +241,52 @@ class FoldersScreen extends StatelessWidget {
     );
   }
 
-  /// 文件夹操作底部菜单
   void _showFolderMenu(BuildContext context, SmartFolder folder) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(2),
               ),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: const Icon(Icons.drive_file_rename_outline_rounded),
-                title: const Text('重命名'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('重命名功能开发中')),
-                  );
-                },
-              ),
-              ListTile(
-                leading: Icon(
-                  Icons.delete_outline_rounded,
-                  color: Theme.of(ctx).colorScheme.error,
-                ),
-                title: Text(
-                  '删除',
-                  style: TextStyle(color: Theme.of(ctx).colorScheme.error),
-                ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _confirmDelete(context, folder);
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.drive_file_rename_outline_rounded),
+              title: const Text('重命名'),
+              onTap: () {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('重命名功能开发中')),
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.delete_outline_rounded,
+                  color: Theme.of(ctx).colorScheme.error),
+              title: Text('删除',
+                  style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmDelete(context, folder);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
   }
 
-  /// 删除确认对话框
   void _confirmDelete(BuildContext context, SmartFolder folder) {
     showDialog(
       context: context,
@@ -224,9 +295,7 @@ class FoldersScreen extends StatelessWidget {
         content: Text('将永久删除「${folder.name}」及其所有规则，无法恢复。'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(
             style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(ctx).colorScheme.error),

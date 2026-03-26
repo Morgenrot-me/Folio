@@ -1,4 +1,11 @@
+// feature_extractor_service.dart
+// AI 特征提取服务：TFLite MobileNet 语义向量 + MLKit OCR + 拉普拉斯模糊度 + 色调/冷暖度 + 截图检测
+// 改善：
+//   - 实现 dominantHue（主色调 0-360°）和 colorWarmth（冷暖度 -1~1）
+//   - 截图检测扩展为多厂商路径关键字列表（覆盖 MIUI/EMUI/ColorOS 等）
+
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
@@ -8,54 +15,63 @@ import '../database/app_database.dart';
 import 'package:drift/drift.dart';
 import '../constants/imagenet_labels.dart';
 
-/// 特征提取服务：负责调用 TFLite + MLKit 对单张图片进行全维度特征提取并落库。
-/// 模型：MobileNet V1（mobilenet.tflite），输出 1000 维 ImageNet 概率向量。
+/// 多厂商截图路径关键字（小写匹配）
+const _screenshotKeywords = [
+  'screenshot',   // 通用
+  'screen_shot',
+  'screencap',
+  'screen-shot',
+  'shot_',        // MIUI: /Shot_xxx/
+  'capture',      // 某些 HuaWei
+  '截图',          // 中文路径
+  '截屏',
+  'screenrecord', // 屏幕录制帧
+];
+
 class FeatureExtractorService {
   final AppDatabase database;
   late TextRecognizer _textRecognizer;
   Interpreter? _interpreter;
 
-  /// 是否已完成初始化（懒加载标志）
   bool get isModelLoaded => _interpreter != null;
 
   FeatureExtractorService(this.database) {
     _textRecognizer = TextRecognizer(script: TextRecognitionScript.chinese);
   }
 
-  /// 初始化 TFLite 模型（懒加载：首次调用时才执行）
+  /// 懒加载 TFLite 模型
   Future<void> initModelIfNeeded() async {
     if (_interpreter != null) return;
     try {
-      // 载入 MobileNet V1 模型权重
       _interpreter = await Interpreter.fromAsset('assets/models/mobilenet.tflite');
-      debugPrint('FeatureExtractorService: MobileNet 模型加载完成');
+      debugPrint('FeatureExtractorService: MobileNet 加载完成');
     } catch (e) {
       debugPrint('FeatureExtractorService: 模型加载失败 => $e');
     }
   }
 
-  /// 释放资源
   void dispose() {
     _textRecognizer.close();
     _interpreter?.close();
   }
 
-  /// 核心调度方法：对单张图片执行全部特征抽取（文字、截图判断、模糊度、主色调、语义向量）并落库。
-  /// 首次调用时自动触发模型懒加载。
-  Future<void> extractFeaturesForImage(String imageId, String filePath, [Uint8List? thumbBytes]) async {
+  /// 核心调度：对单张图片执行全维度特征提取并落库
+  Future<void> extractFeaturesForImage(String imageId, String filePath,
+      [Uint8List? thumbBytes]) async {
     final file = File(filePath);
     if (!await file.exists()) return;
 
-    // 确保模型已加载（懒加载：此处才真正消耗内存）
     await initModelIfNeeded();
 
-    // 1. 文字检测 (ML Kit)
-    bool hasText = await _detectText(file);
+    // 1. OCR 文字检测
+    final hasText = await _detectText(file);
 
-    // 2. 简易截图检测（基于路径关键字）
-    bool isScreenshot = filePath.toLowerCase().contains('screenshot');
+    // 2. 多关键字截图检测
+    final pathLower = filePath.toLowerCase();
+    final isScreenshot =
+        _screenshotKeywords.any((kw) => pathLower.contains(kw));
 
-    // 3. 图像像素特征解析：优先使用缩略图防止 4K 原图 OOM
+    // 3. 解码图像（使用缩略图防止 OOM）
     final targetBytes = thumbBytes ?? await file.readAsBytes();
     final decodedImage = await compute(img.decodeImage, targetBytes);
 
@@ -65,22 +81,26 @@ class FeatureExtractorService {
     Uint8List? semanticVector;
 
     if (decodedImage != null) {
+      // 3a. 模糊度（子线程）
       blurScore = await compute(_calculateBlurScore, decodedImage);
-      // TODO: 色调统计算法后续实现
 
-      // 4. 语义向量推理 (TFLite MobileNet)
+      // 3b. 主色调 + 冷暖度（子线程）
+      final colorResult = await compute(_calculateColorFeatures, decodedImage);
+      dominantHue = colorResult[0];
+      colorWarmth = colorResult[1];
+
+      // 4. 语义向量（TFLite MobileNet）
       semanticVector = await _extractSemanticVector(decodedImage);
     }
 
-    // 5. 将 1000 维概率向量的 Top-6 转换为可读英文标签
+    // 5. Top-6 可读标签
     String? topTagsString;
     if (semanticVector != null && semanticVector.isNotEmpty) {
       try {
         final floats = Float32List.view(semanticVector.buffer);
-        List<MapEntry<int, double>> indexed = floats.toList().asMap().entries.toList();
+        final indexed = floats.toList().asMap().entries.toList();
         indexed.sort((a, b) => b.value.compareTo(a.value));
-
-        List<String> topTags = [];
+        final topTags = <String>[];
         for (int i = 0; i < 6; i++) {
           if (indexed[i].key < ImageNetLabels.labels.length) {
             topTags.add(ImageNetLabels.labels[indexed[i].key]);
@@ -92,75 +112,117 @@ class FeatureExtractorService {
       }
     }
 
-    // 6. 更新回数据库；isAnalyzed=true 标记本轮 AI 管线已完整跑过
-    await (database.update(database.images)..where((tbl) => tbl.id.equals(imageId))).write(
-      ImagesCompanion(
-        hasText: Value(hasText),
-        isScreenshot: Value(isScreenshot),
-        blurScore: Value(blurScore),
-        colorWarmth: Value(colorWarmth),
-        dominantHue: Value(dominantHue),
-        semanticVector: semanticVector != null ? Value(semanticVector) : const Value.absent(),
-        tags: topTagsString != null ? Value(topTagsString) : const Value.absent(),
-        isAnalyzed: const Value(true), // 可靠地标记本记录已完成特征分析
-      ),
-    );
+    // 6. 写库，isAnalyzed=true 表明本记录已完成全管线分析
+    await (database.update(database.images)
+          ..where((tbl) => tbl.id.equals(imageId)))
+        .write(ImagesCompanion(
+      hasText: Value(hasText),
+      isScreenshot: Value(isScreenshot),
+      blurScore: Value(blurScore),
+      colorWarmth: Value(colorWarmth),
+      dominantHue: Value(dominantHue),
+      semanticVector:
+          semanticVector != null ? Value(semanticVector) : const Value.absent(),
+      tags: topTagsString != null ? Value(topTagsString) : const Value.absent(),
+      isAnalyzed: const Value(true),
+    ));
   }
 
-  // ==== 具体实现 ====
+  // =========================================================================
+  // 具体算法实现
+  // =========================================================================
 
   Future<bool> _detectText(File file) async {
     try {
       final inputImage = InputImage.fromFile(file);
-      final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
-      return recognizedText.text.isNotEmpty;
-    } catch (e) {
+      final result = await _textRecognizer.processImage(inputImage);
+      return result.text.isNotEmpty;
+    } catch (_) {
       return false;
     }
   }
 
   static double _calculateBlurScore(img.Image image) {
-    // 先缩放到 256x256 加速计算
     final resized = img.copyResize(image, width: 256, height: 256);
     final gray = img.grayscale(resized);
-
-    // 通过拉普拉斯算子方差评估清晰度：方差越大越清晰
-    double sum = 0;
-    double sqSum = 0;
+    double sum = 0, sqSum = 0;
     int count = 0;
-
     for (int y = 1; y < gray.height - 1; y++) {
       for (int x = 1; x < gray.width - 1; x++) {
-        // Laplacian kernel: [0, 1, 0,  1, -4, 1,  0, 1, 0]
-        num top = gray.getPixel(x, y - 1).r;
-        num bottom = gray.getPixel(x, y + 1).r;
-        num left = gray.getPixel(x - 1, y).r;
-        num right = gray.getPixel(x + 1, y).r;
-        num center = gray.getPixel(x, y).r;
-
-        double laplacian =
-            top.toDouble() + bottom.toDouble() + left.toDouble() + right.toDouble() - (4 * center.toDouble());
-        sum += laplacian;
-        sqSum += laplacian * laplacian;
+        final t = gray.getPixel(x, y - 1).r.toDouble();
+        final b = gray.getPixel(x, y + 1).r.toDouble();
+        final l = gray.getPixel(x - 1, y).r.toDouble();
+        final r = gray.getPixel(x + 1, y).r.toDouble();
+        final c = gray.getPixel(x, y).r.toDouble();
+        final lap = t + b + l + r - 4 * c;
+        sum += lap;
+        sqSum += lap * lap;
         count++;
       }
     }
     if (count == 0) return 0.0;
-    double mean = sum / count;
-    double variance = (sqSum / count) - (mean * mean);
-    return variance;
+    final mean = sum / count;
+    return (sqSum / count) - (mean * mean);
+  }
+
+  /// 计算主色调（dominant hue, 0–360°）和冷暖度（color warmth, -1.0 ~ +1.0）
+  /// 采样 32×32 缩略图，遍历所有像素取均值，性能友好且足够准确。
+  static List<double> _calculateColorFeatures(img.Image image) {
+    // 缩到 32×32 快速采样，足够表征整体色调
+    final small = img.copyResize(image, width: 32, height: 32);
+
+    double totalR = 0, totalG = 0, totalB = 0;
+    int count = 0;
+
+    // 累加所有像素 RGB
+    for (final pixel in small) {
+      totalR += pixel.r / 255.0;
+      totalG += pixel.g / 255.0;
+      totalB += pixel.b / 255.0;
+      count++;
+    }
+    if (count == 0) return [0.0, 0.0];
+
+    final avgR = totalR / count;
+    final avgG = totalG / count;
+    final avgB = totalB / count;
+
+    // 冷暖度 = (红+黄权重) - (蓝+青权重)，范围 -1 ~ +1
+    // 简化：warmth ≈ (R - B)，暖色调（红/橙/黄）R>B，冷色调（蓝/青）B>R
+    final colorWarmth = (avgR - avgB).clamp(-1.0, 1.0);
+
+    // 主色调：将均值 RGB 转为 HSL 取 H 值（0–360°）
+    final hue = _rgbToHue(avgR, avgG, avgB);
+
+    return [hue, colorWarmth];
+  }
+
+  /// RGB（0.0–1.0）→ HSL Hue（0–360°）
+  static double _rgbToHue(double r, double g, double b) {
+    final maxC = max(r, max(g, b));
+    final minC = min(r, min(g, b));
+    final delta = maxC - minC;
+    if (delta < 1e-6) return 0.0; // 无彩色（灰色），色调无意义，定为 0°
+
+    double hue;
+    if (maxC == r) {
+      hue = 60.0 * (((g - b) / delta) % 6);
+    } else if (maxC == g) {
+      hue = 60.0 * (((b - r) / delta) + 2);
+    } else {
+      hue = 60.0 * (((r - g) / delta) + 4);
+    }
+    return hue < 0 ? hue + 360.0 : hue;
   }
 
   static Float32List _prepareTensorInput(img.Image decodedImage) {
-    // MobileNet 标准输入尺寸 224x224，归一化到 [-1.0, 1.0]
     final resized = img.copyResize(decodedImage, width: 224, height: 224);
-    var inputList = Float32List(1 * 224 * 224 * 3);
-    int pixelIndex = 0;
-
+    final inputList = Float32List(224 * 224 * 3);
+    int idx = 0;
     for (final p in resized) {
-      inputList[pixelIndex++] = (p.r / 127.5) - 1.0;
-      inputList[pixelIndex++] = (p.g / 127.5) - 1.0;
-      inputList[pixelIndex++] = (p.b / 127.5) - 1.0;
+      inputList[idx++] = (p.r / 127.5) - 1.0;
+      inputList[idx++] = (p.g / 127.5) - 1.0;
+      inputList[idx++] = (p.b / 127.5) - 1.0;
     }
     return inputList;
   }
@@ -168,22 +230,15 @@ class FeatureExtractorService {
   Future<Uint8List?> _extractSemanticVector(img.Image decodedImage) async {
     if (_interpreter == null) return null;
     try {
-      // 在子线程预处理像素，避免主线程掉帧
       final inputList = await compute(_prepareTensorInput, decodedImage);
-
-      var input = inputList.buffer.asFloat32List().reshape([1, 224, 224, 3]);
-      // 1000 维 ImageNet 概率输出
-      var output = List.filled(1 * 1000, 0.0).reshape([1, 1000]);
-
+      final input = inputList.buffer.asFloat32List().reshape([1, 224, 224, 3]);
+      final output = List.filled(1000, 0.0).reshape([1, 1000]);
       _interpreter!.run(input, output);
-
       final outputVector = (output[0] as List<double>).cast<double>();
-      final bytes = Float32List.fromList(outputVector).buffer.asUint8List();
-      return bytes;
+      return Float32List.fromList(outputVector).buffer.asUint8List();
     } catch (e) {
       debugPrint('TFLite 推理失败: $e');
       return null;
     }
   }
 }
-

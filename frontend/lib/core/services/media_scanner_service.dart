@@ -1,62 +1,66 @@
 // media_scanner_service.dart
-// 媒体扫描服务：负责请求相册权限、分页遍历图片并调用特征提取管线落库。
-// 核心设计：
-//   - 分页加载（每批 50 张），避免万张图库一次性 OOM；
-//   - 取消令牌支持，扫描可随时中断；
-//   - 改用 isAnalyzed 标志判断是否需要重分析，不再依赖不可靠的 blurScore==0。
+// 媒体扫描服务：权限申请 → 所有相册分页扫描 → 特征提取 → 规则匹配。
+// 改善：
+//   - 从 paths.first 改为「找 isAll 虚拟总相册」，确保截图/Downloads/第三方App图全部入库
+//   - 写入 takenAt 拍摄时间（来自 AssetEntity.createDateTime）
+//   - 新增 cleanOrphanedImages()：清理已从手机删除但仍在数据库的僵尸记录
 
-import 'dart:async';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:photo_manager/photo_manager.dart';
-import '../database/app_database.dart';
 import 'package:drift/drift.dart';
+import '../database/app_database.dart';
 import 'feature_extractor_service.dart';
+import 'smart_folder_matcher_service.dart';
 
-/// 每批处理的图片数量
+/// 每批处理的图片数量（防 OOM）
 const _kPageSize = 50;
 
 class MediaScannerService {
   final AppDatabase database;
   final FeatureExtractorService extractor;
+  final SmartFolderMatcherService matcher;
 
-  /// 取消令牌：set 为 true 可中断正在运行的扫描任务
   bool _isCancelled = false;
 
-  MediaScannerService(this.database, this.extractor);
+  MediaScannerService(this.database, this.extractor, this.matcher);
 
-  /// 中断当前正在进行的扫描
-  void cancelScan() {
-    _isCancelled = true;
-  }
+  /// 中断正在进行的扫描
+  void cancelScan() => _isCancelled = true;
 
-  /// 请求权限并全量扫描（分批分页），返回本次新索引的图片数量
+  /// 完整扫描流程：
+  ///   1. 获取所有相册中的图片（isAll 虚拟总相册）
+  ///   2. 分页处理：新图片落库+特征提取，未分析图片补跑
+  ///   3. 扫描完成后触发智能规则匹配
+  ///   返回：本次新入库的图片数量
   Future<int> scanAndIndexNewImages() async {
     _isCancelled = false;
 
     final PermissionState ps = await PhotoManager.requestPermissionExtend();
     if (!ps.isAuth && ps != PermissionState.limited) {
-      throw Exception('PhotoManager: 未获得相册访问权限');
+      throw Exception('未获得相册访问权限，请在系统设置中授权');
     }
 
-    final List<AssetPathEntity> paths = await PhotoManager.getAssetPathList(
-      type: RequestType.image,
-    );
+    // 修复：使用 isAll=true 的虚拟总相册，包含截图/Downloads/所有App图片
+    final paths = await PhotoManager.getAssetPathList(type: RequestType.image);
     if (paths.isEmpty) return 0;
 
-    // MVP 阶段仅扫描主相册（Recent/All）
-    final AssetPathEntity recentPath = paths.first;
-    final int totalCount = await recentPath.assetCountAsync;
+    // 优先找"全部照片"虚拟相册（isAll=true），回退到第一个
+    final AssetPathEntity allPath =
+        paths.firstWhere((p) => p.isAll, orElse: () => paths.first);
+
+    final int totalCount = await allPath.assetCountAsync;
+    debugPrint('MediaScanner: 发现 $totalCount 张图片（相册: ${allPath.name}）');
 
     int newCount = 0;
     int page = 0;
 
-    // 分页循环，每次只取 _kPageSize 张
     while (!_isCancelled) {
       final int start = page * _kPageSize;
       if (start >= totalCount) break;
 
-      final List<AssetEntity> batch = await recentPath.getAssetListRange(
+      final batch = await allPath.getAssetListRange(
         start: start,
         end: (start + _kPageSize).clamp(0, totalCount),
       );
@@ -71,23 +75,32 @@ class MediaScannerService {
       page++;
     }
 
+    // 扫描完成后触发全量规则匹配
+    if (!_isCancelled) {
+      final matched = await matcher.runMatchForAll();
+      debugPrint('MediaScanner: 规则匹配完成，共归类 $matched 条图片-文件夹记录');
+    }
+
     return newCount;
   }
 
-  /// 转换并在数据库不存在时落表，返回是否为新增记录
+  /// 处理单张资产：新图片落库+分析，已有未分析图片补分析
   Future<bool> _processAndSaveAsset(AssetEntity entity) async {
     final file = await entity.file;
     if (file == null) return false;
 
-    // 基于绝对路径生成稳定哈希 ID
     final idHash = sha256.convert(utf8.encode(file.absolute.path)).toString();
 
     final existing = await (database.select(database.images)
-          ..where((tbl) => tbl.id.equals(idHash)))
+          ..where((t) => t.id.equals(idHash)))
         .getSingleOrNull();
 
     if (existing == null) {
-      // 新图片：先落表基础元数据，再触发特征提取流水线
+      // 写入 takenAt 拍摄时间（来自相册元数据，比 indexedAt 更有意义）
+      final takenAtMs = entity.createDateTime != null
+          ? entity.createDateTime!.millisecondsSinceEpoch
+          : null;
+
       await database.into(database.images).insert(
         ImagesCompanion.insert(
           id: idHash,
@@ -95,8 +108,9 @@ class MediaScannerService {
           fileName: entity.title ?? file.path.split('/').last,
           width: entity.width,
           height: entity.height,
-          fileSize: (await file.length()),
+          fileSize: await file.length(),
           indexedAt: DateTime.now().millisecondsSinceEpoch,
+          takenAt: takenAtMs != null ? Value(takenAtMs) : const Value.absent(),
           blurScore: 0.0,
           dominantHue: 0.0,
           colorWarmth: 0.0,
@@ -104,19 +118,45 @@ class MediaScannerService {
         ),
       );
 
-      final thumbBytes = await entity.thumbnailDataWithSize(const ThumbnailSize(512, 512));
+      final thumbBytes =
+          await entity.thumbnailDataWithSize(const ThumbnailSize(512, 512));
       await extractor.extractFeaturesForImage(idHash, file.absolute.path, thumbBytes);
 
-      // 给 UI 线程 30ms 呼吸窗口，防止动画卡顿
+      // 30ms 呼吸窗口，减少 UI 掉帧
       await Future.delayed(const Duration(milliseconds: 30));
       return true;
     } else if (!existing.isAnalyzed) {
-      // 历史记录：AI 分析未完成（早期版本或中途中断）则静默补跑
-      final thumbBytes = await entity.thumbnailDataWithSize(const ThumbnailSize(512, 512));
+      // 历史记录未分析，静默补跑
+      final thumbBytes =
+          await entity.thumbnailDataWithSize(const ThumbnailSize(512, 512));
       await extractor.extractFeaturesForImage(idHash, file.absolute.path, thumbBytes);
       await Future.delayed(const Duration(milliseconds: 30));
     }
 
     return false;
+  }
+
+  /// 清理孤儿记录：检查数据库中每条图片记录对应的文件是否仍存在，
+  /// 删除已从手机中移除的僵尸记录（外键级联自动清理对应的 image_folder_map）。
+  /// 建议在每次扫描完成后或用户手动触发时调用。
+  Future<int> cleanOrphanedImages() async {
+    final allImages = await database.select(database.images).get();
+    int removed = 0;
+
+    for (final image in allImages) {
+      final exists = await File(image.filePath).exists();
+      if (!exists) {
+        await (database.delete(database.images)
+              ..where((t) => t.id.equals(image.id)))
+            .go();
+        removed++;
+        debugPrint('MediaScanner: 清理僵尸记录 ${image.fileName}');
+      }
+    }
+
+    if (removed > 0) {
+      debugPrint('MediaScanner: 清理完成，共删除 $removed 条孤儿记录');
+    }
+    return removed;
   }
 }
