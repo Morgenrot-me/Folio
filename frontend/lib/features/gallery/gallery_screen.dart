@@ -1,5 +1,9 @@
 // gallery_screen.dart
-// 相册时光轴页：展示所有已索引图片，分页加载（每页 100 张）防止大图库 OOM。
+// 相册时光轴页：所有已索引图片，分页加载防 OOM。
+// 修复：
+//   - _onScroll 添加防抖（已满才扩展，避免无限 setState）
+//   - heroTag 传入 ImageDetailScreen
+//   - 空状态文案友好化，提供快捷跳转提示
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -21,6 +25,7 @@ class GalleryScreen extends StatefulWidget {
 class _GalleryScreenState extends State<GalleryScreen> {
   final ScrollController _scrollController = ScrollController();
   int _loadedCount = _kGalleryPageSize;
+  int _lastDataLength = 0; // 防抖：记录上次数据量，仅在数据填满时才扩展
 
   @override
   void initState() {
@@ -35,10 +40,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
     super.dispose();
   }
 
-  /// 滚动到底部时扩展加载数量
+  /// 防抖：仅当当前数据已全部渲染（== _loadedCount）时才扩展 limit，
+  /// 避免用户停在底部时每次微滚动都触发 setState
   void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 300) {
+    if (_scrollController.position.pixels <
+        _scrollController.position.maxScrollExtent - 300) return;
+    if (_lastDataLength >= _loadedCount) {
       setState(() => _loadedCount += _kGalleryPageSize);
     }
   }
@@ -48,9 +55,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
     final db = context.read<AppDatabase>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('所有相片核心特征库'),
-      ),
+      appBar: AppBar(title: const Text('相册时光轴')),
       body: StreamBuilder(
         stream: (db.select(db.images)
               ..orderBy([(t) => drift.OrderingTerm.desc(t.indexedAt)])
@@ -61,12 +66,39 @@ class _GalleryScreenState extends State<GalleryScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           final images = snapshot.data ?? [];
+          _lastDataLength = images.length; // 更新防抖基准
+
           if (images.isEmpty) {
-            return const Center(
-              child: Text(
-                '您还没扫描任何相片，请回大盘点击扫描按钮！',
-                style:
-                    TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey),
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.photo_library_outlined,
+                      size: 72,
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.15),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      '暂无照片',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '请前往「大盘总览」→「特征扫描提取」开始索引',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           }
@@ -85,9 +117,14 @@ class _GalleryScreenState extends State<GalleryScreen> {
               return GestureDetector(
                 onTap: () {
                   Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => ImageDetailScreen(imageRow: imgData)));
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ImageDetailScreen(
+                        imageRow: imgData,
+                        heroTag: imgData.id, // gallery 使用纯 id 作为 hero tag
+                      ),
+                    ),
+                  );
                 },
                 child: Hero(
                   tag: imgData.id,

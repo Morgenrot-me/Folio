@@ -1,3 +1,8 @@
+// root_screen.dart
+// 根页面：使用 NavigationBar（Material 3）+ IndexedStack。
+// IndexedStack 保留各 Tab 状态（不在切换时重建），页面切换无动画跳跃感。
+// 每个子页面自带 Scaffold（AppBar 各自独立），RootScreen 本身不再嵌套 Scaffold body。
+
 import 'package:flutter/material.dart';
 import '../home/home_screen.dart';
 import '../gallery/gallery_screen.dart';
@@ -12,7 +17,8 @@ class RootScreen extends StatefulWidget {
 
 class _RootScreenState extends State<RootScreen> {
   int _currentIndex = 0;
-  
+
+  /// 子页面实例；IndexedStack 保证它们不会因切换而销毁重建
   final List<Widget> _pages = const [
     HomeScreen(),
     GalleryScreen(),
@@ -23,46 +29,37 @@ class _RootScreenState extends State<RootScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        child: _pages[_currentIndex],
+      // IndexedStack：隐藏未选中页面但保持其状态树，无跳屏、无重绘
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages,
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 20,
-              offset: const Offset(0, -5),
-            )
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          child: BottomNavigationBar(
-            type: BottomNavigationBarType.fixed,
-            currentIndex: _currentIndex,
-            onTap: (index) => setState(() => _currentIndex = index),
-            items: const [
-              BottomNavigationBarItem(
-                icon: Icon(Icons.dashboard_rounded),
-                label: '大盘总览',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.photo_library_rounded),
-                label: '相册时光轴',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.folder_special_rounded),
-                label: '智能分类',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.settings_rounded),
-                label: '设置',
-              ),
-            ],
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: (index) =>
+            setState(() => _currentIndex = index),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard_rounded),
+            label: '大盘总览',
           ),
-        ),
+          NavigationDestination(
+            icon: Icon(Icons.photo_library_outlined),
+            selectedIcon: Icon(Icons.photo_library_rounded),
+            label: '相册时光轴',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.folder_special_outlined),
+            selectedIcon: Icon(Icons.folder_special_rounded),
+            label: '智能分类',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings_rounded),
+            label: '设置',
+          ),
+        ],
       ),
     );
   }

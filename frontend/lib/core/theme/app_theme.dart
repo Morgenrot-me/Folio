@@ -1,20 +1,26 @@
+// app_theme.dart
+// 全局主题定义：亮色/暗色，应用 Noto Sans SC 字体，配置 M3 NavigationBar 和 BottomNavigationBar。
+
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  /// 主颜色种源（极简而优雅的深海蓝与冷灰混合色调）
-  static const Color seedColor = Color(0xFF1E3A8A); // Tailwind Blue 900
+  /// 主颜色种源（深海蓝）
+  static const Color seedColor = Color(0xFF1E3A8A);
   static const Color accentColor = Color(0xFF3B82F6); // Blue 500
+  static const Color gradientEndColor = Color(0xFF6D28D9); // Violet 700（与蓝色形成对比渐变）
 
   /// 生成基于预设的亮色系主题
   static ThemeData get lightTheme {
-    return ThemeData(
+    final base = ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
         seedColor: seedColor,
         brightness: Brightness.light,
         primary: accentColor,
-        surface: const Color(0xFFF8FAFC), // 浅色背景 Slate 50
-        onSurface: const Color(0xFF0F172A), // 深灰文字 Slate 900
+        secondary: gradientEndColor,
+        surface: const Color(0xFFF8FAFC),
+        onSurface: const Color(0xFF0F172A),
       ),
       scaffoldBackgroundColor: const Color(0xFFF8FAFC),
       appBarTheme: const AppBarTheme(
@@ -31,32 +37,55 @@ class AppTheme {
       ),
       cardTheme: CardThemeData(
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         color: Colors.white,
       ),
+      // BottomNavigationBar：未选中标签同样显示文字
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         elevation: 0,
         backgroundColor: Colors.white,
         selectedItemColor: accentColor,
-        unselectedItemColor: Color(0xFF64748B), // Slate 500
+        unselectedItemColor: Color(0xFF64748B),
         showSelectedLabels: true,
-        showUnselectedLabels: false,
+        showUnselectedLabels: true, // 修复：所有 Tab 均显示文字标签
         type: BottomNavigationBarType.fixed,
       ),
+      // Material 3 NavigationBar 主题
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: Colors.white,
+        indicatorColor: accentColor.withValues(alpha: 0.12),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const TextStyle(
+                color: accentColor, fontWeight: FontWeight.w600, fontSize: 12);
+          }
+          return const TextStyle(
+              color: Color(0xFF64748B), fontWeight: FontWeight.w500, fontSize: 12);
+        }),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const IconThemeData(color: accentColor);
+          }
+          return const IconThemeData(color: Color(0xFF64748B));
+        }),
+      ),
+    );
+    // 将整个主题的文字系统替换为 Noto Sans SC（最佳中文显示）
+    return base.copyWith(
+      textTheme: GoogleFonts.notoSansScTextTheme(base.textTheme),
     );
   }
 
-  /// 预留深色模式（极简暗夜与明快蓝色高亮的组合）
+  /// 深色主题
   static ThemeData get darkTheme {
-    return ThemeData(
+    final base = ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
         seedColor: seedColor,
         brightness: Brightness.dark,
-        primary: const Color(0xFF60A5FA), // Blue 400
-        surface: const Color(0xFF0F172A), // Slate 900
+        primary: const Color(0xFF60A5FA),
+        secondary: const Color(0xFFA78BFA), // Violet 400
+        surface: const Color(0xFF0F172A),
         onSurface: const Color(0xFFF8FAFC),
       ),
       scaffoldBackgroundColor: const Color(0xFF0F172A),
@@ -73,16 +102,27 @@ class AppTheme {
       ),
       cardTheme: CardThemeData(
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        color: const Color(0xFF1E293B), // Slate 800
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        color: const Color(0xFF1E293B),
       ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         elevation: 0,
         backgroundColor: Color(0xFF1E293B),
         selectedItemColor: Color(0xFF60A5FA),
-        unselectedItemColor: Color(0xFF94A3B8), // Slate 400
+        unselectedItemColor: Color(0xFF94A3B8),
+        showSelectedLabels: true,
+        showUnselectedLabels: true,
+        type: BottomNavigationBarType.fixed,
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: const Color(0xFF1E293B),
+        indicatorColor: const Color(0xFF60A5FA).withValues(alpha: 0.15),
+      ),
+    );
+    return base.copyWith(
+      textTheme: GoogleFonts.notoSansScTextTheme(base.textTheme).apply(
+        bodyColor: const Color(0xFFF8FAFC),
+        displayColor: const Color(0xFFF8FAFC),
       ),
     );
   }

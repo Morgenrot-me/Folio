@@ -1,17 +1,34 @@
+// image_detail_screen.dart
+// 图片特征详情页：展示单张图片的 AI 提取特征与文件元数据。
+// 修复：
+//   - 增加 heroTag 参数，支持从 Home（home_xxx）和 Gallery（xxx）正确匹配 Hero 动画
+//   - 图片区域改为屏幕高度 45% 响应式，不再硬编码 400px
+//   - 添加图片加载状态（loadingBuilder）
+//   - withOpacity → withValues
+//   - 标签标题 "Top 3" → "Top 6"
+
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart' hide Image;
 import '../../core/database/app_database.dart' hide Image;
 
-/// 图片特征详情页：展示单张图片的 AI 提取特征与文件元数据。
+/// 图片特征详情页
 class ImageDetailScreen extends StatelessWidget {
-  // 强类型接收 Drift 生成的 Image 数据对象
   final Image imageRow;
+  /// Hero 标签：由调用方传入，保证首页和相册页的 tag 各自对应
+  final Object heroTag;
 
-  const ImageDetailScreen({super.key, required this.imageRow});
+  const ImageDetailScreen({
+    super.key,
+    required this.imageRow,
+    required this.heroTag,
+  });
 
   @override
   Widget build(BuildContext context) {
+    // 响应式图片高度：屏幕高度的 45%
+    final imgHeight = MediaQuery.of(context).size.height * 0.45;
+
     return Scaffold(
       appBar: AppBar(title: const Text('特征透视与详情分析')),
       body: SingleChildScrollView(
@@ -19,12 +36,30 @@ class ImageDetailScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Hero(
-              tag: imageRow.id,
+              tag: heroTag,
               child: Image.file(
                 File(imageRow.filePath),
-                fit: BoxFit.contain,
+                fit: BoxFit.cover,
                 width: double.infinity,
-                height: 400,
+                height: imgHeight,
+                // 图片从磁盘加载时显示进度指示器
+                frameBuilder: (ctx, child, frame, wasSynchronouslyLoaded) {
+                  if (wasSynchronouslyLoaded || frame != null) return child;
+                  return SizedBox(
+                    height: imgHeight,
+                    child: const Center(child: CircularProgressIndicator()),
+                  );
+                },
+                errorBuilder: (ctx, err, stack) => SizedBox(
+                  height: imgHeight,
+                  child: Center(
+                    child: Icon(
+                      Icons.broken_image_outlined,
+                      size: 64,
+                      color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.2),
+                    ),
+                  ),
+                ),
               ),
             ),
             Padding(
@@ -32,32 +67,75 @@ class ImageDetailScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('💡 底层机器视觉提取特征', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
+                  Text(
+                    '💡 底层机器视觉提取特征',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                  ),
                   const SizedBox(height: 16),
-                  _buildFeatureTile(context, Icons.lens_blur_rounded, '拉普拉斯方差 (模糊度)', '${imageRow.blurScore.toStringAsFixed(2)}'),
-                  _buildFeatureTile(context, Icons.text_snippet_rounded, 'OCR 文字检出', imageRow.hasText ? '是' : '否'),
-                  _buildFeatureTile(context, Icons.screenshot_rounded, '截图判定', imageRow.isScreenshot ? '是' : '否'),
-                  if (imageRow.tags != null && imageRow.tags.toString().isNotEmpty)
-                    _buildFeatureTile(context, Icons.local_offer_rounded, '1000 级细分纯物体标签 (Top 3)', imageRow.tags.toString().toUpperCase()),
-                  _buildFeatureTile(context, Icons.auto_awesome_mosaic_rounded, '隐性特征张量池 (TFLite)', _getVectorPreview(imageRow.semanticVector)),
-                  
+                  _buildFeatureTile(context, Icons.lens_blur_rounded, '拉普拉斯方差（模糊度）',
+                      '${imageRow.blurScore.toStringAsFixed(2)}'),
+                  _buildFeatureTile(context, Icons.text_snippet_rounded, 'OCR 文字检出',
+                      imageRow.hasText ? '是' : '否'),
+                  _buildFeatureTile(context, Icons.screenshot_rounded, '截图判定',
+                      imageRow.isScreenshot ? '是' : '否'),
+                  _buildFeatureTile(
+                    context,
+                    Icons.check_circle_outline_rounded,
+                    'AI 特征提取完成',
+                    imageRow.isAnalyzed ? '✓ 已完成' : '⏳ 待分析',
+                  ),
+                  if (imageRow.tags != null && imageRow.tags!.isNotEmpty)
+                    _buildFeatureTile(
+                      context,
+                      Icons.local_offer_rounded,
+                      '1000 级细分物体标签（Top 6）', // 修复：Top 3 → Top 6
+                      imageRow.tags!.toUpperCase(),
+                    ),
+                  _buildFeatureTile(
+                    context,
+                    Icons.auto_awesome_mosaic_rounded,
+                    '隐性特征张量池（TFLite）',
+                    _getVectorPreview(imageRow.semanticVector),
+                  ),
                   const SizedBox(height: 40),
-                  
-                  Text('文件元数据', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  Text(
+                    '文件元数据',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 16),
-                  _buildFeatureTile(context, Icons.photo_size_select_actual_rounded, '照片物理分辨率', '${imageRow.width} x ${imageRow.height}'),
-                  _buildFeatureTile(context, Icons.sd_storage_rounded, '纯体积大小', '${(imageRow.fileSize / 1024 / 1024).toStringAsFixed(2)} MB'),
-                  _buildFeatureTile(context, Icons.fingerprint_rounded, '漂移哈希表散列 ID', imageRow.id, isMini: true),
+                  _buildFeatureTile(context, Icons.photo_size_select_actual_rounded,
+                      '照片物理分辨率', '${imageRow.width} × ${imageRow.height}'),
+                  _buildFeatureTile(context, Icons.sd_storage_rounded, '文件大小',
+                      '${(imageRow.fileSize / 1024 / 1024).toStringAsFixed(2)} MB'),
+                  _buildFeatureTile(
+                    context,
+                    Icons.fingerprint_rounded,
+                    '索引散列 ID',
+                    imageRow.id,
+                    isMini: true,
+                  ),
                 ],
               ),
-            )
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildFeatureTile(BuildContext context, IconData icon, String label, String value, {bool isMini = false}) {
+  Widget _buildFeatureTile(
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value, {
+    bool isMini = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: Row(
@@ -66,35 +144,44 @@ class ImageDetailScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(16)
+              // 修复：withOpacity → withValues
+              color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(icon, size: 24, color: Theme.of(context).colorScheme.primary)
+            child: Icon(icon, size: 24, color: Theme.of(context).colorScheme.primary),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 13, fontWeight: FontWeight.normal)),
+                Text(
+                  label,
+                  style: TextStyle(
+                    // 修复：withOpacity → withValues
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                    fontSize: 13,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: isMini ? 10 : 16)),
+                Text(
+                  value,
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: isMini ? 10 : 16),
+                ),
               ],
             ),
-          )
+          ),
         ],
       ),
     );
   }
 
   String _getVectorPreview(dynamic semanticVector) {
-    if (semanticVector == null || semanticVector.isEmpty) {
-      return '尚未提取或提取失败';
-    }
+    if (semanticVector == null || semanticVector.isEmpty) return '尚未提取或提取失败';
     try {
-      final floats = Float32List.view(semanticVector.buffer);
+      final floats = Float32List.view((semanticVector as List).buffer);
       final preview = floats.take(4).map((e) => e.toStringAsFixed(3)).join(', ');
-      return '已提取 ${floats.length} 维 [ $preview ... ]';
+      return '已提取 ${floats.length} 维 [ $preview … ]';
     } catch (e) {
       return '数据格式异常';
     }
