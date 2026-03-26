@@ -5,6 +5,7 @@
 //   - 写入 takenAt 拍摄时间（来自 AssetEntity.createDateTime）
 //   - 新增 cleanOrphanedImages()：清理已从手机删除但仍在数据库的僵尸记录
 
+import 'dart:io';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';

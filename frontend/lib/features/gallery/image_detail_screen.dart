@@ -1,21 +1,14 @@
 // image_detail_screen.dart
 // 图片特征详情页：展示单张图片的 AI 提取特征与文件元数据。
-// 修复：
-//   - 增加 heroTag 参数，支持从 Home（home_xxx）和 Gallery（xxx）正确匹配 Hero 动画
-//   - 图片区域改为屏幕高度 45% 响应式，不再硬编码 400px
-//   - 添加图片加载状态（loadingBuilder）
-//   - withOpacity → withValues
-//   - 标签标题 "Top 3" → "Top 6"
+// 修复：使用 `as db` 前缀隔离 Drift Image 与 Flutter Image，消除命名冲突
 
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:flutter/material.dart' hide Image;
-import '../../core/database/app_database.dart' hide Image;
+import 'package:flutter/material.dart'; // Flutter Image widget 正常使用
+import '../../core/database/app_database.dart' as db; // Drift 类型加 db. 前缀避冲突
 
-/// 图片特征详情页
 class ImageDetailScreen extends StatelessWidget {
-  final Image imageRow;
-  /// Hero 标签：由调用方传入，保证首页和相册页的 tag 各自对应
+  final db.Image imageRow; // Drift 生成的图片数据模型
   final Object heroTag;
 
   const ImageDetailScreen({
@@ -26,7 +19,6 @@ class ImageDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 响应式图片高度：屏幕高度的 45%
     final imgHeight = MediaQuery.of(context).size.height * 0.45;
 
     return Scaffold(
@@ -37,12 +29,11 @@ class ImageDetailScreen extends StatelessWidget {
           children: [
             Hero(
               tag: heroTag,
-              child: Image.file(
+              child: Image.file( // Flutter Image widget
                 File(imageRow.filePath),
                 fit: BoxFit.cover,
                 width: double.infinity,
                 height: imgHeight,
-                // 图片从磁盘加载时显示进度指示器
                 frameBuilder: (ctx, child, frame, wasSynchronouslyLoaded) {
                   if (wasSynchronouslyLoaded || frame != null) return child;
                   return SizedBox(
@@ -53,11 +44,12 @@ class ImageDetailScreen extends StatelessWidget {
                 errorBuilder: (ctx, err, stack) => SizedBox(
                   height: imgHeight,
                   child: Center(
-                    child: Icon(
-                      Icons.broken_image_outlined,
-                      size: 64,
-                      color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.2),
-                    ),
+                    child: Icon(Icons.broken_image_outlined,
+                        size: 64,
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.2)),
                   ),
                 ),
               ),
@@ -75,23 +67,31 @@ class ImageDetailScreen extends StatelessWidget {
                         ),
                   ),
                   const SizedBox(height: 16),
-                  _buildFeatureTile(context, Icons.lens_blur_rounded, '拉普拉斯方差（模糊度）',
-                      '${imageRow.blurScore.toStringAsFixed(2)}'),
-                  _buildFeatureTile(context, Icons.text_snippet_rounded, 'OCR 文字检出',
-                      imageRow.hasText ? '是' : '否'),
-                  _buildFeatureTile(context, Icons.screenshot_rounded, '截图判定',
-                      imageRow.isScreenshot ? '是' : '否'),
+                  _buildFeatureTile(context, Icons.lens_blur_rounded,
+                      '拉普拉斯方差（模糊度）', '${imageRow.blurScore.toStringAsFixed(2)}'),
+                  _buildFeatureTile(context, Icons.text_snippet_rounded,
+                      'OCR 文字检出', imageRow.hasText ? '是' : '否'),
+                  _buildFeatureTile(context, Icons.screenshot_rounded,
+                      '截图判定', imageRow.isScreenshot ? '是' : '否'),
+                  _buildFeatureTile(context, Icons.check_circle_outline_rounded,
+                      'AI 特征提取完成', imageRow.isAnalyzed ? '✓ 已完成' : '⏳ 待分析'),
                   _buildFeatureTile(
                     context,
-                    Icons.check_circle_outline_rounded,
-                    'AI 特征提取完成',
-                    imageRow.isAnalyzed ? '✓ 已完成' : '⏳ 待分析',
+                    Icons.thermostat_rounded,
+                    '色温冷暖（-1 冷 ~ +1 暖）',
+                    imageRow.colorWarmth.toStringAsFixed(3),
+                  ),
+                  _buildFeatureTile(
+                    context,
+                    Icons.palette_rounded,
+                    '主色调（色相角度 0-360°）',
+                    '${imageRow.dominantHue.toStringAsFixed(1)}°',
                   ),
                   if (imageRow.tags != null && imageRow.tags!.isNotEmpty)
                     _buildFeatureTile(
                       context,
                       Icons.local_offer_rounded,
-                      '1000 级细分物体标签（Top 6）', // 修复：Top 3 → Top 6
+                      '1000 级细分物体标签（Top 6）',
                       imageRow.tags!.toUpperCase(),
                     ),
                   _buildFeatureTile(
@@ -111,7 +111,8 @@ class ImageDetailScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   _buildFeatureTile(context, Icons.photo_size_select_actual_rounded,
                       '照片物理分辨率', '${imageRow.width} × ${imageRow.height}'),
-                  _buildFeatureTile(context, Icons.sd_storage_rounded, '文件大小',
+                  _buildFeatureTile(context, Icons.sd_storage_rounded,
+                      '文件大小',
                       '${(imageRow.fileSize / 1024 / 1024).toStringAsFixed(2)} MB'),
                   _buildFeatureTile(
                     context,
@@ -129,13 +130,8 @@ class ImageDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFeatureTile(
-    BuildContext context,
-    IconData icon,
-    String label,
-    String value, {
-    bool isMini = false,
-  }) {
+  Widget _buildFeatureTile(BuildContext context, IconData icon, String label,
+      String value, {bool isMini = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: Row(
@@ -144,7 +140,6 @@ class ImageDetailScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              // 修复：withOpacity → withValues
               color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(16),
             ),
@@ -155,19 +150,14 @@ class ImageDetailScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    // 修复：withOpacity → withValues
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-                    fontSize: 13,
-                  ),
-                ),
+                Text(label,
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                        fontSize: 13)),
                 const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: isMini ? 10 : 16),
-                ),
+                Text(value,
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: isMini ? 10 : 16)),
               ],
             ),
           ),
@@ -177,9 +167,13 @@ class ImageDetailScreen extends StatelessWidget {
   }
 
   String _getVectorPreview(dynamic semanticVector) {
-    if (semanticVector == null || semanticVector.isEmpty) return '尚未提取或提取失败';
+    if (semanticVector == null) return '尚未提取或提取失败';
     try {
-      final floats = Float32List.view((semanticVector as List).buffer);
+      // semanticVector 在数据库中存为 Uint8List
+      final bytes = semanticVector as Uint8List;
+      if (bytes.isEmpty) return '尚未提取或提取失败';
+      final floats = Float32List.view(bytes.buffer);
+      if (floats.isEmpty) return '数据格式异常';
       final preview = floats.take(4).map((e) => e.toStringAsFixed(3)).join(', ');
       return '已提取 ${floats.length} 维 [ $preview … ]';
     } catch (e) {
