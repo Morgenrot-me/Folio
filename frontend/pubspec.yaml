@@ -1,5 +1,5 @@
 name: smart_gallery
-description: "A new Flutter project."
+description: "SmartGallery — 一款本地隐私优先的 AI 智能图库分类应用，基于 TFLite + MLKit 实现端侧特征提取与智能规则分类。"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -43,6 +43,8 @@ dependencies:
   google_mlkit_text_recognition: ^0.15.1
   image: ^4.8.0
   provider: ^6.1.5+1
+  uuid: ^4.5.1
+  crypto: ^3.0.5
 
 dev_dependencies:
   flutter_test:

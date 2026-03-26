@@ -1,3 +1,10 @@
+// home_screen.dart
+// 主页大盘：展示总索引数、真实 AI 分析进度条、快捷操作按钮、近期入库缩略图。
+// 修复内容：
+//   - 进度条从硬编码 0% 改为实时读取 watchTotalImagesCount / watchAnalyzedImagesCount；
+//   - 所有 withOpacity() 替换为 withValues(alpha:)（Flutter 废弃 API 修复）；
+//   - 扫描结果现在显示本次新增张数。
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -12,7 +19,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final database = context.read<AppDatabase>();
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('大盘概览'),
@@ -26,22 +33,22 @@ class HomeScreen extends StatelessWidget {
             '快捷操作',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                 ),
           ),
           const SizedBox(height: 16),
           Row(
             children: [
               _buildActionCard(
-                context, 
-                Icons.sync_rounded, 
+                context,
+                Icons.sync_rounded,
                 '特征扫描提取',
                 onTap: () => _handleScan(context),
               ),
               const SizedBox(width: 16),
               _buildActionCard(
-                context, 
-                Icons.auto_awesome_rounded, 
+                context,
+                Icons.auto_awesome_rounded,
                 '聚类归置',
                 onTap: () {},
               ),
@@ -52,7 +59,7 @@ class HomeScreen extends StatelessWidget {
             '近期已索引特征照片',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                 ),
           ),
           const SizedBox(height: 16),
@@ -70,7 +77,12 @@ class HomeScreen extends StatelessWidget {
                 return Center(
                   child: Padding(
                     padding: const EdgeInsets.all(20.0),
-                    child: Text('暂无近期入库记录', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5))),
+                    child: Text('暂无近期入库记录',
+                        style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.5))),
                   ),
                 );
               }
@@ -87,9 +99,10 @@ class HomeScreen extends StatelessWidget {
                   final imgData = images[index];
                   return GestureDetector(
                     onTap: () {
-                      Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => ImageDetailScreen(imageRow: imgData)
-                      ));
+                      Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => ImageDetailScreen(imageRow: imgData)));
                     },
                     child: Hero(
                       tag: 'home_${imgData.id}',
@@ -99,7 +112,8 @@ class HomeScreen extends StatelessWidget {
                           File(imgData.filePath),
                           fit: BoxFit.cover,
                           cacheWidth: 300,
-                          errorBuilder: (ctx, err, stack) => Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                          errorBuilder: (ctx, err, stack) => Container(
+                              color: Theme.of(context).colorScheme.surfaceContainerHighest),
                         ),
                       ),
                     ),
@@ -115,14 +129,14 @@ class HomeScreen extends StatelessWidget {
 
   Widget _buildHeroCard(BuildContext context) {
     final database = context.read<AppDatabase>();
-    
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
             Theme.of(context).colorScheme.primary,
-            Theme.of(context).colorScheme.primary.withBlue(255),
+            Theme.of(context).colorScheme.primary.withValues(alpha: 0.75),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -130,7 +144,7 @@ class HomeScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
             blurRadius: 16,
             offset: const Offset(0, 8),
           )
@@ -141,7 +155,8 @@ class HomeScreen extends StatelessWidget {
         children: [
           const Text(
             '本地图像智能索引数量',
-            style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600),
+            style: TextStyle(
+                color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           StreamBuilder<int>(
@@ -150,37 +165,58 @@ class HomeScreen extends StatelessWidget {
               final count = snapshot.data ?? 0;
               return Text(
                 '$count 张',
-                style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 32, fontWeight: FontWeight.w800),
               );
             },
           ),
           const SizedBox(height: 24),
-          Row(
-            children: [
-              const Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                  child: LinearProgressIndicator(
-                    value: 0.0, // 初始阶段暂时预置为 0，后期依据相机图库总数计算
-                    backgroundColor: Colors.white24,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    minHeight: 8,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              const Text(
-                '0%',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              )
-            ],
-          )
+          // 真实 AI 分析进度条：已完成分析 / 总计
+          StreamBuilder<int>(
+            stream: database.watchTotalImagesCount(),
+            builder: (context, totalSnap) {
+              final total = totalSnap.data ?? 0;
+              return StreamBuilder<int>(
+                stream: database.watchAnalyzedImagesCount(),
+                builder: (context, analyzedSnap) {
+                  final analyzed = analyzedSnap.data ?? 0;
+                  final progress = total > 0 ? analyzed / total : 0.0;
+                  final pct = total > 0 ? (progress * 100).toStringAsFixed(0) : '—';
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: const BorderRadius.all(Radius.circular(8)),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          backgroundColor: Colors.white24,
+                          valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                          minHeight: 8,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        total > 0
+                            ? 'AI 分析完成 $analyzed / $total 张（$pct%）'
+                            : '尚未扫描，点击"特征扫描提取"开始',
+                        style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildActionCard(BuildContext context, IconData icon, String label, {required VoidCallback onTap}) {
+  Widget _buildActionCard(BuildContext context, IconData icon, String label,
+      {required VoidCallback onTap}) {
     return Expanded(
       child: Material(
         color: Colors.transparent,
@@ -194,7 +230,7 @@ class HomeScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
+                  color: Colors.black.withValues(alpha: 0.03),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 )
@@ -205,10 +241,11 @@ class HomeScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(icon, color: Theme.of(context).colorScheme.primary, size: 28),
+                  child:
+                      Icon(icon, color: Theme.of(context).colorScheme.primary, size: 28),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -230,17 +267,17 @@ class HomeScreen extends StatelessWidget {
     );
     try {
       final scanner = context.read<MediaScannerService>();
-      await scanner.scanAndIndexNewImages();
+      final newCount = await scanner.scanAndIndexNewImages();
       if (context.mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('🎉 本次智能索引增量比对已完成入库！')),
+          SnackBar(content: Text('🎉 本次智能索引增量完成，新增 $newCount 张！')),
         );
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('扫描时发生错误，请检查是否有相册读取权限或看日志: $e')),
+          SnackBar(content: Text('扫描时发生错误，请检查相册读取权限: $e')),
         );
       }
     }

@@ -183,6 +183,21 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, Image> {
     type: DriftSqlType.double,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _isAnalyzedMeta = const VerificationMeta(
+    'isAnalyzed',
+  );
+  @override
+  late final GeneratedColumn<bool> isAnalyzed = GeneratedColumn<bool>(
+    'is_analyzed',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_analyzed" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _clusterIdMeta = const VerificationMeta(
     'clusterId',
   );
@@ -230,6 +245,7 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, Image> {
     blurScore,
     dominantHue,
     colorWarmth,
+    isAnalyzed,
     clusterId,
     gpsLat,
     gpsLon,
@@ -373,6 +389,12 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, Image> {
     } else if (isInserting) {
       context.missing(_colorWarmthMeta);
     }
+    if (data.containsKey('is_analyzed')) {
+      context.handle(
+        _isAnalyzedMeta,
+        isAnalyzed.isAcceptableOrUnknown(data['is_analyzed']!, _isAnalyzedMeta),
+      );
+    }
     if (data.containsKey('cluster_id')) {
       context.handle(
         _clusterIdMeta,
@@ -464,6 +486,10 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, Image> {
         DriftSqlType.double,
         data['${effectivePrefix}color_warmth'],
       )!,
+      isAnalyzed: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_analyzed'],
+      )!,
       clusterId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}cluster_id'],
@@ -502,6 +528,9 @@ class Image extends DataClass implements Insertable<Image> {
   final double blurScore;
   final double dominantHue;
   final double colorWarmth;
+
+  /// v3: 可靠标记 AI 特征提取管线是否完整跑过，替代不可靠的 blurScore==0 判断
+  final bool isAnalyzed;
   final String? clusterId;
   final double? gpsLat;
   final double? gpsLon;
@@ -522,6 +551,7 @@ class Image extends DataClass implements Insertable<Image> {
     required this.blurScore,
     required this.dominantHue,
     required this.colorWarmth,
+    required this.isAnalyzed,
     this.clusterId,
     this.gpsLat,
     this.gpsLon,
@@ -551,6 +581,7 @@ class Image extends DataClass implements Insertable<Image> {
     map['blur_score'] = Variable<double>(blurScore);
     map['dominant_hue'] = Variable<double>(dominantHue);
     map['color_warmth'] = Variable<double>(colorWarmth);
+    map['is_analyzed'] = Variable<bool>(isAnalyzed);
     if (!nullToAbsent || clusterId != null) {
       map['cluster_id'] = Variable<String>(clusterId);
     }
@@ -585,6 +616,7 @@ class Image extends DataClass implements Insertable<Image> {
       blurScore: Value(blurScore),
       dominantHue: Value(dominantHue),
       colorWarmth: Value(colorWarmth),
+      isAnalyzed: Value(isAnalyzed),
       clusterId: clusterId == null && nullToAbsent
           ? const Value.absent()
           : Value(clusterId),
@@ -619,6 +651,7 @@ class Image extends DataClass implements Insertable<Image> {
       blurScore: serializer.fromJson<double>(json['blurScore']),
       dominantHue: serializer.fromJson<double>(json['dominantHue']),
       colorWarmth: serializer.fromJson<double>(json['colorWarmth']),
+      isAnalyzed: serializer.fromJson<bool>(json['isAnalyzed']),
       clusterId: serializer.fromJson<String?>(json['clusterId']),
       gpsLat: serializer.fromJson<double?>(json['gpsLat']),
       gpsLon: serializer.fromJson<double?>(json['gpsLon']),
@@ -644,6 +677,7 @@ class Image extends DataClass implements Insertable<Image> {
       'blurScore': serializer.toJson<double>(blurScore),
       'dominantHue': serializer.toJson<double>(dominantHue),
       'colorWarmth': serializer.toJson<double>(colorWarmth),
+      'isAnalyzed': serializer.toJson<bool>(isAnalyzed),
       'clusterId': serializer.toJson<String?>(clusterId),
       'gpsLat': serializer.toJson<double?>(gpsLat),
       'gpsLon': serializer.toJson<double?>(gpsLon),
@@ -667,6 +701,7 @@ class Image extends DataClass implements Insertable<Image> {
     double? blurScore,
     double? dominantHue,
     double? colorWarmth,
+    bool? isAnalyzed,
     Value<String?> clusterId = const Value.absent(),
     Value<double?> gpsLat = const Value.absent(),
     Value<double?> gpsLon = const Value.absent(),
@@ -687,6 +722,7 @@ class Image extends DataClass implements Insertable<Image> {
     blurScore: blurScore ?? this.blurScore,
     dominantHue: dominantHue ?? this.dominantHue,
     colorWarmth: colorWarmth ?? this.colorWarmth,
+    isAnalyzed: isAnalyzed ?? this.isAnalyzed,
     clusterId: clusterId.present ? clusterId.value : this.clusterId,
     gpsLat: gpsLat.present ? gpsLat.value : this.gpsLat,
     gpsLon: gpsLon.present ? gpsLon.value : this.gpsLon,
@@ -717,6 +753,9 @@ class Image extends DataClass implements Insertable<Image> {
       colorWarmth: data.colorWarmth.present
           ? data.colorWarmth.value
           : this.colorWarmth,
+      isAnalyzed: data.isAnalyzed.present
+          ? data.isAnalyzed.value
+          : this.isAnalyzed,
       clusterId: data.clusterId.present ? data.clusterId.value : this.clusterId,
       gpsLat: data.gpsLat.present ? data.gpsLat.value : this.gpsLat,
       gpsLon: data.gpsLon.present ? data.gpsLon.value : this.gpsLon,
@@ -742,6 +781,7 @@ class Image extends DataClass implements Insertable<Image> {
           ..write('blurScore: $blurScore, ')
           ..write('dominantHue: $dominantHue, ')
           ..write('colorWarmth: $colorWarmth, ')
+          ..write('isAnalyzed: $isAnalyzed, ')
           ..write('clusterId: $clusterId, ')
           ..write('gpsLat: $gpsLat, ')
           ..write('gpsLon: $gpsLon')
@@ -767,6 +807,7 @@ class Image extends DataClass implements Insertable<Image> {
     blurScore,
     dominantHue,
     colorWarmth,
+    isAnalyzed,
     clusterId,
     gpsLat,
     gpsLon,
@@ -794,6 +835,7 @@ class Image extends DataClass implements Insertable<Image> {
           other.blurScore == this.blurScore &&
           other.dominantHue == this.dominantHue &&
           other.colorWarmth == this.colorWarmth &&
+          other.isAnalyzed == this.isAnalyzed &&
           other.clusterId == this.clusterId &&
           other.gpsLat == this.gpsLat &&
           other.gpsLon == this.gpsLon);
@@ -816,6 +858,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
   final Value<double> blurScore;
   final Value<double> dominantHue;
   final Value<double> colorWarmth;
+  final Value<bool> isAnalyzed;
   final Value<String?> clusterId;
   final Value<double?> gpsLat;
   final Value<double?> gpsLon;
@@ -837,6 +880,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     this.blurScore = const Value.absent(),
     this.dominantHue = const Value.absent(),
     this.colorWarmth = const Value.absent(),
+    this.isAnalyzed = const Value.absent(),
     this.clusterId = const Value.absent(),
     this.gpsLat = const Value.absent(),
     this.gpsLon = const Value.absent(),
@@ -859,6 +903,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     required double blurScore,
     required double dominantHue,
     required double colorWarmth,
+    this.isAnalyzed = const Value.absent(),
     this.clusterId = const Value.absent(),
     this.gpsLat = const Value.absent(),
     this.gpsLon = const Value.absent(),
@@ -891,6 +936,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     Expression<double>? blurScore,
     Expression<double>? dominantHue,
     Expression<double>? colorWarmth,
+    Expression<bool>? isAnalyzed,
     Expression<String>? clusterId,
     Expression<double>? gpsLat,
     Expression<double>? gpsLon,
@@ -913,6 +959,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
       if (blurScore != null) 'blur_score': blurScore,
       if (dominantHue != null) 'dominant_hue': dominantHue,
       if (colorWarmth != null) 'color_warmth': colorWarmth,
+      if (isAnalyzed != null) 'is_analyzed': isAnalyzed,
       if (clusterId != null) 'cluster_id': clusterId,
       if (gpsLat != null) 'gps_lat': gpsLat,
       if (gpsLon != null) 'gps_lon': gpsLon,
@@ -937,6 +984,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     Value<double>? blurScore,
     Value<double>? dominantHue,
     Value<double>? colorWarmth,
+    Value<bool>? isAnalyzed,
     Value<String?>? clusterId,
     Value<double?>? gpsLat,
     Value<double?>? gpsLon,
@@ -959,6 +1007,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
       blurScore: blurScore ?? this.blurScore,
       dominantHue: dominantHue ?? this.dominantHue,
       colorWarmth: colorWarmth ?? this.colorWarmth,
+      isAnalyzed: isAnalyzed ?? this.isAnalyzed,
       clusterId: clusterId ?? this.clusterId,
       gpsLat: gpsLat ?? this.gpsLat,
       gpsLon: gpsLon ?? this.gpsLon,
@@ -1017,6 +1066,9 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     if (colorWarmth.present) {
       map['color_warmth'] = Variable<double>(colorWarmth.value);
     }
+    if (isAnalyzed.present) {
+      map['is_analyzed'] = Variable<bool>(isAnalyzed.value);
+    }
     if (clusterId.present) {
       map['cluster_id'] = Variable<String>(clusterId.value);
     }
@@ -1051,6 +1103,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
           ..write('blurScore: $blurScore, ')
           ..write('dominantHue: $dominantHue, ')
           ..write('colorWarmth: $colorWarmth, ')
+          ..write('isAnalyzed: $isAnalyzed, ')
           ..write('clusterId: $clusterId, ')
           ..write('gpsLat: $gpsLat, ')
           ..write('gpsLon: $gpsLon, ')
@@ -1760,6 +1813,8 @@ class $FolderRulesTable extends FolderRules
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
+    $customConstraints:
+        'NOT NULL REFERENCES smart_folders(id) ON DELETE CASCADE',
   );
   static const VerificationMeta _parentIdMeta = const VerificationMeta(
     'parentId',
@@ -1932,6 +1987,8 @@ class $FolderRulesTable extends FolderRules
 
 class FolderRule extends DataClass implements Insertable<FolderRule> {
   final String id;
+
+  /// 外键：所属智能文件夹，文件夹删除时级联删除全部规则节点
   final String folderId;
   final String? parentId;
   final String nodeType;
@@ -2663,6 +2720,7 @@ class $ImageFolderMapTable extends ImageFolderMap
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL REFERENCES images(id) ON DELETE CASCADE',
   );
   static const VerificationMeta _folderIdMeta = const VerificationMeta(
     'folderId',
@@ -2674,6 +2732,8 @@ class $ImageFolderMapTable extends ImageFolderMap
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
+    $customConstraints:
+        'NOT NULL REFERENCES smart_folders(id) ON DELETE CASCADE',
   );
   static const VerificationMeta _sourceMeta = const VerificationMeta('source');
   @override
@@ -2822,7 +2882,11 @@ class $ImageFolderMapTable extends ImageFolderMap
 class ImageFolderMapData extends DataClass
     implements Insertable<ImageFolderMapData> {
   final String id;
+
+  /// 外键：图片删除时级联删除映射记录
   final String imageId;
+
+  /// 外键：文件夹删除时级联删除映射记录
   final String folderId;
   final String source;
   final int assignedAt;
@@ -3074,6 +3138,30 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     clusters,
     imageFolderMap,
   ];
+  @override
+  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'smart_folders',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('folder_rules', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'images',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('image_folder_map', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'smart_folders',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('image_folder_map', kind: UpdateKind.delete)],
+    ),
+  ]);
 }
 
 typedef $$ImagesTableCreateCompanionBuilder =
@@ -3094,6 +3182,7 @@ typedef $$ImagesTableCreateCompanionBuilder =
       required double blurScore,
       required double dominantHue,
       required double colorWarmth,
+      Value<bool> isAnalyzed,
       Value<String?> clusterId,
       Value<double?> gpsLat,
       Value<double?> gpsLon,
@@ -3117,11 +3206,35 @@ typedef $$ImagesTableUpdateCompanionBuilder =
       Value<double> blurScore,
       Value<double> dominantHue,
       Value<double> colorWarmth,
+      Value<bool> isAnalyzed,
       Value<String?> clusterId,
       Value<double?> gpsLat,
       Value<double?> gpsLon,
       Value<int> rowid,
     });
+
+final class $$ImagesTableReferences
+    extends BaseReferences<_$AppDatabase, $ImagesTable, Image> {
+  $$ImagesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$ImageFolderMapTable, List<ImageFolderMapData>>
+  _imageFolderMapRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.imageFolderMap,
+    aliasName: $_aliasNameGenerator(db.images.id, db.imageFolderMap.imageId),
+  );
+
+  $$ImageFolderMapTableProcessedTableManager get imageFolderMapRefs {
+    final manager = $$ImageFolderMapTableTableManager(
+      $_db,
+      $_db.imageFolderMap,
+    ).filter((f) => f.imageId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_imageFolderMapRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
 
 class $$ImagesTableFilterComposer
     extends Composer<_$AppDatabase, $ImagesTable> {
@@ -3212,6 +3325,11 @@ class $$ImagesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<bool> get isAnalyzed => $composableBuilder(
+    column: $table.isAnalyzed,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get clusterId => $composableBuilder(
     column: $table.clusterId,
     builder: (column) => ColumnFilters(column),
@@ -3226,6 +3344,31 @@ class $$ImagesTableFilterComposer
     column: $table.gpsLon,
     builder: (column) => ColumnFilters(column),
   );
+
+  Expression<bool> imageFolderMapRefs(
+    Expression<bool> Function($$ImageFolderMapTableFilterComposer f) f,
+  ) {
+    final $$ImageFolderMapTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.imageFolderMap,
+      getReferencedColumn: (t) => t.imageId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImageFolderMapTableFilterComposer(
+            $db: $db,
+            $table: $db.imageFolderMap,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ImagesTableOrderingComposer
@@ -3317,6 +3460,11 @@ class $$ImagesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isAnalyzed => $composableBuilder(
+    column: $table.isAnalyzed,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get clusterId => $composableBuilder(
     column: $table.clusterId,
     builder: (column) => ColumnOrderings(column),
@@ -3398,6 +3546,11 @@ class $$ImagesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get isAnalyzed => $composableBuilder(
+    column: $table.isAnalyzed,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get clusterId =>
       $composableBuilder(column: $table.clusterId, builder: (column) => column);
 
@@ -3406,6 +3559,31 @@ class $$ImagesTableAnnotationComposer
 
   GeneratedColumn<double> get gpsLon =>
       $composableBuilder(column: $table.gpsLon, builder: (column) => column);
+
+  Expression<T> imageFolderMapRefs<T extends Object>(
+    Expression<T> Function($$ImageFolderMapTableAnnotationComposer a) f,
+  ) {
+    final $$ImageFolderMapTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.imageFolderMap,
+      getReferencedColumn: (t) => t.imageId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImageFolderMapTableAnnotationComposer(
+            $db: $db,
+            $table: $db.imageFolderMap,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ImagesTableTableManager
@@ -3419,9 +3597,9 @@ class $$ImagesTableTableManager
           $$ImagesTableAnnotationComposer,
           $$ImagesTableCreateCompanionBuilder,
           $$ImagesTableUpdateCompanionBuilder,
-          (Image, BaseReferences<_$AppDatabase, $ImagesTable, Image>),
+          (Image, $$ImagesTableReferences),
           Image,
-          PrefetchHooks Function()
+          PrefetchHooks Function({bool imageFolderMapRefs})
         > {
   $$ImagesTableTableManager(_$AppDatabase db, $ImagesTable table)
     : super(
@@ -3452,6 +3630,7 @@ class $$ImagesTableTableManager
                 Value<double> blurScore = const Value.absent(),
                 Value<double> dominantHue = const Value.absent(),
                 Value<double> colorWarmth = const Value.absent(),
+                Value<bool> isAnalyzed = const Value.absent(),
                 Value<String?> clusterId = const Value.absent(),
                 Value<double?> gpsLat = const Value.absent(),
                 Value<double?> gpsLon = const Value.absent(),
@@ -3473,6 +3652,7 @@ class $$ImagesTableTableManager
                 blurScore: blurScore,
                 dominantHue: dominantHue,
                 colorWarmth: colorWarmth,
+                isAnalyzed: isAnalyzed,
                 clusterId: clusterId,
                 gpsLat: gpsLat,
                 gpsLon: gpsLon,
@@ -3496,6 +3676,7 @@ class $$ImagesTableTableManager
                 required double blurScore,
                 required double dominantHue,
                 required double colorWarmth,
+                Value<bool> isAnalyzed = const Value.absent(),
                 Value<String?> clusterId = const Value.absent(),
                 Value<double?> gpsLat = const Value.absent(),
                 Value<double?> gpsLon = const Value.absent(),
@@ -3517,15 +3698,49 @@ class $$ImagesTableTableManager
                 blurScore: blurScore,
                 dominantHue: dominantHue,
                 colorWarmth: colorWarmth,
+                isAnalyzed: isAnalyzed,
                 clusterId: clusterId,
                 gpsLat: gpsLat,
                 gpsLon: gpsLon,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) =>
+                    (e.readTable(table), $$ImagesTableReferences(db, table, e)),
+              )
               .toList(),
-          prefetchHooksCallback: null,
+          prefetchHooksCallback: ({imageFolderMapRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (imageFolderMapRefs) db.imageFolderMap,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (imageFolderMapRefs)
+                    await $_getPrefetchedData<
+                      Image,
+                      $ImagesTable,
+                      ImageFolderMapData
+                    >(
+                      currentTable: table,
+                      referencedTable: $$ImagesTableReferences
+                          ._imageFolderMapRefsTable(db),
+                      managerFromTypedResult: (p0) => $$ImagesTableReferences(
+                        db,
+                        table,
+                        p0,
+                      ).imageFolderMapRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.imageId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
         ),
       );
 }
@@ -3540,9 +3755,9 @@ typedef $$ImagesTableProcessedTableManager =
       $$ImagesTableAnnotationComposer,
       $$ImagesTableCreateCompanionBuilder,
       $$ImagesTableUpdateCompanionBuilder,
-      (Image, BaseReferences<_$AppDatabase, $ImagesTable, Image>),
+      (Image, $$ImagesTableReferences),
       Image,
-      PrefetchHooks Function()
+      PrefetchHooks Function({bool imageFolderMapRefs})
     >;
 typedef $$SmartFoldersTableCreateCompanionBuilder =
     SmartFoldersCompanion Function({
@@ -3574,6 +3789,53 @@ typedef $$SmartFoldersTableUpdateCompanionBuilder =
       Value<int?> lastExportedAt,
       Value<int> rowid,
     });
+
+final class $$SmartFoldersTableReferences
+    extends BaseReferences<_$AppDatabase, $SmartFoldersTable, SmartFolder> {
+  $$SmartFoldersTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$FolderRulesTable, List<FolderRule>>
+  _folderRulesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.folderRules,
+    aliasName: $_aliasNameGenerator(
+      db.smartFolders.id,
+      db.folderRules.folderId,
+    ),
+  );
+
+  $$FolderRulesTableProcessedTableManager get folderRulesRefs {
+    final manager = $$FolderRulesTableTableManager(
+      $_db,
+      $_db.folderRules,
+    ).filter((f) => f.folderId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_folderRulesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$ImageFolderMapTable, List<ImageFolderMapData>>
+  _imageFolderMapRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.imageFolderMap,
+    aliasName: $_aliasNameGenerator(
+      db.smartFolders.id,
+      db.imageFolderMap.folderId,
+    ),
+  );
+
+  $$ImageFolderMapTableProcessedTableManager get imageFolderMapRefs {
+    final manager = $$ImageFolderMapTableTableManager(
+      $_db,
+      $_db.imageFolderMap,
+    ).filter((f) => f.folderId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_imageFolderMapRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
 
 class $$SmartFoldersTableFilterComposer
     extends Composer<_$AppDatabase, $SmartFoldersTable> {
@@ -3638,6 +3900,56 @@ class $$SmartFoldersTableFilterComposer
     column: $table.lastExportedAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  Expression<bool> folderRulesRefs(
+    Expression<bool> Function($$FolderRulesTableFilterComposer f) f,
+  ) {
+    final $$FolderRulesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.folderRules,
+      getReferencedColumn: (t) => t.folderId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FolderRulesTableFilterComposer(
+            $db: $db,
+            $table: $db.folderRules,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> imageFolderMapRefs(
+    Expression<bool> Function($$ImageFolderMapTableFilterComposer f) f,
+  ) {
+    final $$ImageFolderMapTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.imageFolderMap,
+      getReferencedColumn: (t) => t.folderId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImageFolderMapTableFilterComposer(
+            $db: $db,
+            $table: $db.imageFolderMap,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$SmartFoldersTableOrderingComposer
@@ -3756,6 +4068,56 @@ class $$SmartFoldersTableAnnotationComposer
     column: $table.lastExportedAt,
     builder: (column) => column,
   );
+
+  Expression<T> folderRulesRefs<T extends Object>(
+    Expression<T> Function($$FolderRulesTableAnnotationComposer a) f,
+  ) {
+    final $$FolderRulesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.folderRules,
+      getReferencedColumn: (t) => t.folderId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FolderRulesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.folderRules,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> imageFolderMapRefs<T extends Object>(
+    Expression<T> Function($$ImageFolderMapTableAnnotationComposer a) f,
+  ) {
+    final $$ImageFolderMapTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.imageFolderMap,
+      getReferencedColumn: (t) => t.folderId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImageFolderMapTableAnnotationComposer(
+            $db: $db,
+            $table: $db.imageFolderMap,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$SmartFoldersTableTableManager
@@ -3769,12 +4131,12 @@ class $$SmartFoldersTableTableManager
           $$SmartFoldersTableAnnotationComposer,
           $$SmartFoldersTableCreateCompanionBuilder,
           $$SmartFoldersTableUpdateCompanionBuilder,
-          (
-            SmartFolder,
-            BaseReferences<_$AppDatabase, $SmartFoldersTable, SmartFolder>,
-          ),
+          (SmartFolder, $$SmartFoldersTableReferences),
           SmartFolder,
-          PrefetchHooks Function()
+          PrefetchHooks Function({
+            bool folderRulesRefs,
+            bool imageFolderMapRefs,
+          })
         > {
   $$SmartFoldersTableTableManager(_$AppDatabase db, $SmartFoldersTable table)
     : super(
@@ -3844,9 +4206,70 @@ class $$SmartFoldersTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$SmartFoldersTableReferences(db, table, e),
+                ),
+              )
               .toList(),
-          prefetchHooksCallback: null,
+          prefetchHooksCallback:
+              ({folderRulesRefs = false, imageFolderMapRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (folderRulesRefs) db.folderRules,
+                    if (imageFolderMapRefs) db.imageFolderMap,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (folderRulesRefs)
+                        await $_getPrefetchedData<
+                          SmartFolder,
+                          $SmartFoldersTable,
+                          FolderRule
+                        >(
+                          currentTable: table,
+                          referencedTable: $$SmartFoldersTableReferences
+                              ._folderRulesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$SmartFoldersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).folderRulesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.folderId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (imageFolderMapRefs)
+                        await $_getPrefetchedData<
+                          SmartFolder,
+                          $SmartFoldersTable,
+                          ImageFolderMapData
+                        >(
+                          currentTable: table,
+                          referencedTable: $$SmartFoldersTableReferences
+                              ._imageFolderMapRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$SmartFoldersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).imageFolderMapRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.folderId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
         ),
       );
 }
@@ -3861,12 +4284,9 @@ typedef $$SmartFoldersTableProcessedTableManager =
       $$SmartFoldersTableAnnotationComposer,
       $$SmartFoldersTableCreateCompanionBuilder,
       $$SmartFoldersTableUpdateCompanionBuilder,
-      (
-        SmartFolder,
-        BaseReferences<_$AppDatabase, $SmartFoldersTable, SmartFolder>,
-      ),
+      (SmartFolder, $$SmartFoldersTableReferences),
       SmartFolder,
-      PrefetchHooks Function()
+      PrefetchHooks Function({bool folderRulesRefs, bool imageFolderMapRefs})
     >;
 typedef $$FolderRulesTableCreateCompanionBuilder =
     FolderRulesCompanion Function({
@@ -3891,6 +4311,30 @@ typedef $$FolderRulesTableUpdateCompanionBuilder =
       Value<int> rowid,
     });
 
+final class $$FolderRulesTableReferences
+    extends BaseReferences<_$AppDatabase, $FolderRulesTable, FolderRule> {
+  $$FolderRulesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $SmartFoldersTable _folderIdTable(_$AppDatabase db) =>
+      db.smartFolders.createAlias(
+        $_aliasNameGenerator(db.folderRules.folderId, db.smartFolders.id),
+      );
+
+  $$SmartFoldersTableProcessedTableManager get folderId {
+    final $_column = $_itemColumn<String>('folder_id')!;
+
+    final manager = $$SmartFoldersTableTableManager(
+      $_db,
+      $_db.smartFolders,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_folderIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
 class $$FolderRulesTableFilterComposer
     extends Composer<_$AppDatabase, $FolderRulesTable> {
   $$FolderRulesTableFilterComposer({
@@ -3902,11 +4346,6 @@ class $$FolderRulesTableFilterComposer
   });
   ColumnFilters<String> get id => $composableBuilder(
     column: $table.id,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get folderId => $composableBuilder(
-    column: $table.folderId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3934,6 +4373,29 @@ class $$FolderRulesTableFilterComposer
     column: $table.value,
     builder: (column) => ColumnFilters(column),
   );
+
+  $$SmartFoldersTableFilterComposer get folderId {
+    final $$SmartFoldersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.smartFolders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SmartFoldersTableFilterComposer(
+            $db: $db,
+            $table: $db.smartFolders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$FolderRulesTableOrderingComposer
@@ -3947,11 +4409,6 @@ class $$FolderRulesTableOrderingComposer
   });
   ColumnOrderings<String> get id => $composableBuilder(
     column: $table.id,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get folderId => $composableBuilder(
-    column: $table.folderId,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -3979,6 +4436,29 @@ class $$FolderRulesTableOrderingComposer
     column: $table.value,
     builder: (column) => ColumnOrderings(column),
   );
+
+  $$SmartFoldersTableOrderingComposer get folderId {
+    final $$SmartFoldersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.smartFolders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SmartFoldersTableOrderingComposer(
+            $db: $db,
+            $table: $db.smartFolders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$FolderRulesTableAnnotationComposer
@@ -3992,9 +4472,6 @@ class $$FolderRulesTableAnnotationComposer
   });
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
-
-  GeneratedColumn<String> get folderId =>
-      $composableBuilder(column: $table.folderId, builder: (column) => column);
 
   GeneratedColumn<String> get parentId =>
       $composableBuilder(column: $table.parentId, builder: (column) => column);
@@ -4014,6 +4491,29 @@ class $$FolderRulesTableAnnotationComposer
 
   GeneratedColumn<String> get value =>
       $composableBuilder(column: $table.value, builder: (column) => column);
+
+  $$SmartFoldersTableAnnotationComposer get folderId {
+    final $$SmartFoldersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.smartFolders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SmartFoldersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.smartFolders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$FolderRulesTableTableManager
@@ -4027,12 +4527,9 @@ class $$FolderRulesTableTableManager
           $$FolderRulesTableAnnotationComposer,
           $$FolderRulesTableCreateCompanionBuilder,
           $$FolderRulesTableUpdateCompanionBuilder,
-          (
-            FolderRule,
-            BaseReferences<_$AppDatabase, $FolderRulesTable, FolderRule>,
-          ),
+          (FolderRule, $$FolderRulesTableReferences),
           FolderRule,
-          PrefetchHooks Function()
+          PrefetchHooks Function({bool folderId})
         > {
   $$FolderRulesTableTableManager(_$AppDatabase db, $FolderRulesTable table)
     : super(
@@ -4086,9 +4583,54 @@ class $$FolderRulesTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$FolderRulesTableReferences(db, table, e),
+                ),
+              )
               .toList(),
-          prefetchHooksCallback: null,
+          prefetchHooksCallback: ({folderId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (folderId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.folderId,
+                                referencedTable: $$FolderRulesTableReferences
+                                    ._folderIdTable(db),
+                                referencedColumn: $$FolderRulesTableReferences
+                                    ._folderIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
         ),
       );
 }
@@ -4103,12 +4645,9 @@ typedef $$FolderRulesTableProcessedTableManager =
       $$FolderRulesTableAnnotationComposer,
       $$FolderRulesTableCreateCompanionBuilder,
       $$FolderRulesTableUpdateCompanionBuilder,
-      (
-        FolderRule,
-        BaseReferences<_$AppDatabase, $FolderRulesTable, FolderRule>,
-      ),
+      (FolderRule, $$FolderRulesTableReferences),
       FolderRule,
-      PrefetchHooks Function()
+      PrefetchHooks Function({bool folderId})
     >;
 typedef $$ClustersTableCreateCompanionBuilder =
     ClustersCompanion Function({
@@ -4350,6 +4889,57 @@ typedef $$ImageFolderMapTableUpdateCompanionBuilder =
       Value<int> rowid,
     });
 
+final class $$ImageFolderMapTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $ImageFolderMapTable,
+          ImageFolderMapData
+        > {
+  $$ImageFolderMapTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ImagesTable _imageIdTable(_$AppDatabase db) => db.images.createAlias(
+    $_aliasNameGenerator(db.imageFolderMap.imageId, db.images.id),
+  );
+
+  $$ImagesTableProcessedTableManager get imageId {
+    final $_column = $_itemColumn<String>('image_id')!;
+
+    final manager = $$ImagesTableTableManager(
+      $_db,
+      $_db.images,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_imageIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $SmartFoldersTable _folderIdTable(_$AppDatabase db) =>
+      db.smartFolders.createAlias(
+        $_aliasNameGenerator(db.imageFolderMap.folderId, db.smartFolders.id),
+      );
+
+  $$SmartFoldersTableProcessedTableManager get folderId {
+    final $_column = $_itemColumn<String>('folder_id')!;
+
+    final manager = $$SmartFoldersTableTableManager(
+      $_db,
+      $_db.smartFolders,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_folderIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
 class $$ImageFolderMapTableFilterComposer
     extends Composer<_$AppDatabase, $ImageFolderMapTable> {
   $$ImageFolderMapTableFilterComposer({
@@ -4361,16 +4951,6 @@ class $$ImageFolderMapTableFilterComposer
   });
   ColumnFilters<String> get id => $composableBuilder(
     column: $table.id,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get imageId => $composableBuilder(
-    column: $table.imageId,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get folderId => $composableBuilder(
-    column: $table.folderId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4388,6 +4968,52 @@ class $$ImageFolderMapTableFilterComposer
     column: $table.isPhysicalPrimary,
     builder: (column) => ColumnFilters(column),
   );
+
+  $$ImagesTableFilterComposer get imageId {
+    final $$ImagesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.imageId,
+      referencedTable: $db.images,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImagesTableFilterComposer(
+            $db: $db,
+            $table: $db.images,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$SmartFoldersTableFilterComposer get folderId {
+    final $$SmartFoldersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.smartFolders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SmartFoldersTableFilterComposer(
+            $db: $db,
+            $table: $db.smartFolders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$ImageFolderMapTableOrderingComposer
@@ -4401,16 +5027,6 @@ class $$ImageFolderMapTableOrderingComposer
   });
   ColumnOrderings<String> get id => $composableBuilder(
     column: $table.id,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get imageId => $composableBuilder(
-    column: $table.imageId,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get folderId => $composableBuilder(
-    column: $table.folderId,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -4428,6 +5044,52 @@ class $$ImageFolderMapTableOrderingComposer
     column: $table.isPhysicalPrimary,
     builder: (column) => ColumnOrderings(column),
   );
+
+  $$ImagesTableOrderingComposer get imageId {
+    final $$ImagesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.imageId,
+      referencedTable: $db.images,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImagesTableOrderingComposer(
+            $db: $db,
+            $table: $db.images,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$SmartFoldersTableOrderingComposer get folderId {
+    final $$SmartFoldersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.smartFolders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SmartFoldersTableOrderingComposer(
+            $db: $db,
+            $table: $db.smartFolders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$ImageFolderMapTableAnnotationComposer
@@ -4442,12 +5104,6 @@ class $$ImageFolderMapTableAnnotationComposer
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
-  GeneratedColumn<String> get imageId =>
-      $composableBuilder(column: $table.imageId, builder: (column) => column);
-
-  GeneratedColumn<String> get folderId =>
-      $composableBuilder(column: $table.folderId, builder: (column) => column);
-
   GeneratedColumn<String> get source =>
       $composableBuilder(column: $table.source, builder: (column) => column);
 
@@ -4460,6 +5116,52 @@ class $$ImageFolderMapTableAnnotationComposer
     column: $table.isPhysicalPrimary,
     builder: (column) => column,
   );
+
+  $$ImagesTableAnnotationComposer get imageId {
+    final $$ImagesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.imageId,
+      referencedTable: $db.images,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImagesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.images,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$SmartFoldersTableAnnotationComposer get folderId {
+    final $$SmartFoldersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.smartFolders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SmartFoldersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.smartFolders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$ImageFolderMapTableTableManager
@@ -4473,16 +5175,9 @@ class $$ImageFolderMapTableTableManager
           $$ImageFolderMapTableAnnotationComposer,
           $$ImageFolderMapTableCreateCompanionBuilder,
           $$ImageFolderMapTableUpdateCompanionBuilder,
-          (
-            ImageFolderMapData,
-            BaseReferences<
-              _$AppDatabase,
-              $ImageFolderMapTable,
-              ImageFolderMapData
-            >,
-          ),
+          (ImageFolderMapData, $$ImageFolderMapTableReferences),
           ImageFolderMapData,
-          PrefetchHooks Function()
+          PrefetchHooks Function({bool imageId, bool folderId})
         > {
   $$ImageFolderMapTableTableManager(
     _$AppDatabase db,
@@ -4534,9 +5229,69 @@ class $$ImageFolderMapTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ImageFolderMapTableReferences(db, table, e),
+                ),
+              )
               .toList(),
-          prefetchHooksCallback: null,
+          prefetchHooksCallback: ({imageId = false, folderId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (imageId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.imageId,
+                                referencedTable: $$ImageFolderMapTableReferences
+                                    ._imageIdTable(db),
+                                referencedColumn:
+                                    $$ImageFolderMapTableReferences
+                                        ._imageIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+                    if (folderId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.folderId,
+                                referencedTable: $$ImageFolderMapTableReferences
+                                    ._folderIdTable(db),
+                                referencedColumn:
+                                    $$ImageFolderMapTableReferences
+                                        ._folderIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
         ),
       );
 }
@@ -4551,12 +5306,9 @@ typedef $$ImageFolderMapTableProcessedTableManager =
       $$ImageFolderMapTableAnnotationComposer,
       $$ImageFolderMapTableCreateCompanionBuilder,
       $$ImageFolderMapTableUpdateCompanionBuilder,
-      (
-        ImageFolderMapData,
-        BaseReferences<_$AppDatabase, $ImageFolderMapTable, ImageFolderMapData>,
-      ),
+      (ImageFolderMapData, $$ImageFolderMapTableReferences),
       ImageFolderMapData,
-      PrefetchHooks Function()
+      PrefetchHooks Function({bool imageId, bool folderId})
     >;
 
 class $AppDatabaseManager {

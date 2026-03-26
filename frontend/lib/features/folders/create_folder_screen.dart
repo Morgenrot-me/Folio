@@ -1,7 +1,9 @@
-import 'dart:math';
+// create_folder_screen.dart
+// 创建智能过滤文件夹：根据截图/文字检出/模糊度等规则条件创建规则树并落库。
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drift/drift.dart' as drift;
+import 'package:uuid/uuid.dart';
 import '../../core/database/app_database.dart';
 
 class CreateFolderScreen extends StatefulWidget {
@@ -13,14 +15,14 @@ class CreateFolderScreen extends StatefulWidget {
 
 class _CreateFolderScreenState extends State<CreateFolderScreen> {
   final _nameController = TextEditingController();
-  
+  final _uuid = const Uuid();
+
   bool _excludeScreenshots = false;
   bool _requireText = false;
   double _minBlurScore = 0.0;
-  
-  String _generateId() {
-    return DateTime.now().microsecondsSinceEpoch.toString() + '_' + Random().nextInt(10000).toString();
-  }
+
+  /// 生成每次唯一的 UUID v4（无碰撞）
+  String _generateId() => _uuid.v4();
 
   void _saveFolder() async {
     if (_nameController.text.trim().isEmpty) {

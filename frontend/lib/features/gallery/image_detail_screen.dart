@@ -1,9 +1,12 @@
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Image;
+import '../../core/database/app_database.dart' hide Image;
 
+/// 图片特征详情页：展示单张图片的 AI 提取特征与文件元数据。
 class ImageDetailScreen extends StatelessWidget {
-  final dynamic imageRow;
+  // 强类型接收 Drift 生成的 Image 数据对象
+  final Image imageRow;
 
   const ImageDetailScreen({super.key, required this.imageRow});
 

@@ -11,13 +11,15 @@ class Images extends Table {
   IntColumn get takenAt => integer().nullable()(); // Unix时间戳
   IntColumn get indexedAt => integer()();
   IntColumn get phash => integer().nullable()(); // 64位哈希
-  BlobColumn get semanticVector => blob()(); // 512维向量 (BLOB float32x512)
+  BlobColumn get semanticVector => blob()(); // 1000维 MobileNet ImageNet 概率向量 (BLOB float32x1000)
   BoolColumn get isScreenshot => boolean().withDefault(const Constant(false))();
   BoolColumn get hasText => boolean().withDefault(const Constant(false))();
-  TextColumn get tags => text().nullable()(); // NEW: 用以存储将张量解构出的小于 5 个的可读英文标签 (以逗号切割)
+  TextColumn get tags => text().nullable()(); // 将张量解构出的 Top-6 可读英文标签，以逗号切割
   RealColumn get blurScore => real()();
   RealColumn get dominantHue => real()();
   RealColumn get colorWarmth => real()();
+  /// v3: 可靠标记 AI 特征提取管线是否完整跑过，替代不可靠的 blurScore==0 判断
+  BoolColumn get isAnalyzed => boolean().withDefault(const Constant(false))();
   TextColumn get clusterId => text().nullable()(); // 外键 clusters.id
   RealColumn get gpsLat => real().nullable()();
   RealColumn get gpsLon => real().nullable()();

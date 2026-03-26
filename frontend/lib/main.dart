@@ -8,14 +8,12 @@ import 'core/services/media_scanner_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // 初始化全局数据库
-  final database = AppDatabase();
-  
-  // 实例化大模型分析管线并提前把 300MB 的模型权重全家桶装载进内存
-  final featureExtractor = FeatureExtractorService(database);
-  await featureExtractor.initModel();
 
+  // 初始化数据库（轻量，立即返回）
+  final database = AppDatabase();
+
+  // 创建服务实例，不在启动时加载模型（懒加载：首次扫描时自动触发）
+  final featureExtractor = FeatureExtractorService(database);
   final scannerService = MediaScannerService(database, featureExtractor);
 
   runApp(

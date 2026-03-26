@@ -9,20 +9,10 @@ class FoldersScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final database = context.read<AppDatabase>();
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('智能分类'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_rounded),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('创建智能分类规则引擎模块开发中...')),
-              );
-            },
-          )
-        ],
       ),
       body: StreamBuilder<List<SmartFolder>>(
         stream: database.select(database.smartFolders).watch(),
