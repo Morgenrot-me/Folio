@@ -11,6 +11,8 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final database = context.read<AppDatabase>();
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('大盘概览'),

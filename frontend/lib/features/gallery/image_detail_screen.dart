@@ -34,7 +34,9 @@ class ImageDetailScreen extends StatelessWidget {
                   _buildFeatureTile(context, Icons.lens_blur_rounded, '拉普拉斯方差 (模糊度)', '${imageRow.blurScore.toStringAsFixed(2)}'),
                   _buildFeatureTile(context, Icons.text_snippet_rounded, 'OCR 文字检出', imageRow.hasText ? '是' : '否'),
                   _buildFeatureTile(context, Icons.screenshot_rounded, '截图判定', imageRow.isScreenshot ? '是' : '否'),
-                  _buildFeatureTile(context, Icons.auto_awesome_mosaic_rounded, '特征张量 (TFLite)', _getVectorPreview(imageRow.semanticVector)),
+                  if (imageRow.tags != null && imageRow.tags.toString().isNotEmpty)
+                    _buildFeatureTile(context, Icons.local_offer_rounded, '1000 级细分纯物体标签 (Top 3)', imageRow.tags.toString().toUpperCase()),
+                  _buildFeatureTile(context, Icons.auto_awesome_mosaic_rounded, '隐性特征张量池 (TFLite)', _getVectorPreview(imageRow.semanticVector)),
                   
                   const SizedBox(height: 40),
                   

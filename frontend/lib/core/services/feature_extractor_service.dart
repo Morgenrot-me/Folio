@@ -6,6 +6,7 @@ import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 import '../database/app_database.dart';
 import 'package:drift/drift.dart';
+import '../constants/imagenet_labels.dart';
 
 class FeatureExtractorService {
   final AppDatabase database;
@@ -61,8 +62,31 @@ class FeatureExtractorService {
       // 4. 语义向量推理 (TFLite)
       semanticVector = await _extractSemanticVector(decodedImage);
     }
+    
+    // 【点石成金】将毫无意义的张量浮点转换为人类能够直视的英文标签！
+    String? topTagsString;
+    if (semanticVector != null && semanticVector.isNotEmpty) {
+      try {
+        final floats = Float32List.view(semanticVector.buffer);
+        // 保留原数组的值并捆绑其对应的 1000 个类目的原始 Index
+        List<MapEntry<int, double>> indexed = floats.toList().asMap().entries.toList();
+        // 根据置信概率打分从高到低倒叙排列
+        indexed.sort((a, b) => b.value.compareTo(a.value));
+        
+        List<String> topTags = [];
+        // 我们只取置信度最高的前 3 个物体名词！
+        for (int i = 0; i < 3; i++) {
+          if (indexed[i].key < ImageNetLabels.labels.length) {
+             topTags.add(ImageNetLabels.labels[indexed[i].key]);
+          }
+        }
+        topTagsString = topTags.join(', ');
+      } catch(e) {
+        debugPrint('提取人类可读标签失败: $e');
+      }
+    }
 
-    // 5. 更新回数据库
+    // 5. 更新回数据库 (含增容字段 tags)
     await (database.update(database.images)..where((tbl) => tbl.id.equals(imageId))).write(
       ImagesCompanion(
         hasText: Value(hasText),
@@ -71,6 +95,7 @@ class FeatureExtractorService {
         colorWarmth: Value(colorWarmth),
         dominantHue: Value(dominantHue),
         semanticVector: semanticVector != null ? Value(semanticVector) : const Value.absent(),
+        tags: topTagsString != null ? Value(topTagsString) : const Value.absent(),
       ),
     );
   }

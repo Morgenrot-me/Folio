@@ -14,6 +14,7 @@ class Images extends Table {
   BlobColumn get semanticVector => blob()(); // 512维向量 (BLOB float32x512)
   BoolColumn get isScreenshot => boolean().withDefault(const Constant(false))();
   BoolColumn get hasText => boolean().withDefault(const Constant(false))();
+  TextColumn get tags => text().nullable()(); // NEW: 用以存储将张量解构出的小于 5 个的可读英文标签 (以逗号切割)
   RealColumn get blurScore => real()();
   RealColumn get dominantHue => real()();
   RealColumn get colorWarmth => real()();

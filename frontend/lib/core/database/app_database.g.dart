@@ -141,6 +141,15 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, Image> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _tagsMeta = const VerificationMeta('tags');
+  @override
+  late final GeneratedColumn<String> tags = GeneratedColumn<String>(
+    'tags',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _blurScoreMeta = const VerificationMeta(
     'blurScore',
   );
@@ -217,6 +226,7 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, Image> {
     semanticVector,
     isScreenshot,
     hasText,
+    tags,
     blurScore,
     dominantHue,
     colorWarmth,
@@ -327,6 +337,12 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, Image> {
         hasText.isAcceptableOrUnknown(data['has_text']!, _hasTextMeta),
       );
     }
+    if (data.containsKey('tags')) {
+      context.handle(
+        _tagsMeta,
+        tags.isAcceptableOrUnknown(data['tags']!, _tagsMeta),
+      );
+    }
     if (data.containsKey('blur_score')) {
       context.handle(
         _blurScoreMeta,
@@ -432,6 +448,10 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, Image> {
         DriftSqlType.bool,
         data['${effectivePrefix}has_text'],
       )!,
+      tags: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tags'],
+      ),
       blurScore: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}blur_score'],
@@ -478,6 +498,7 @@ class Image extends DataClass implements Insertable<Image> {
   final Uint8List semanticVector;
   final bool isScreenshot;
   final bool hasText;
+  final String? tags;
   final double blurScore;
   final double dominantHue;
   final double colorWarmth;
@@ -497,6 +518,7 @@ class Image extends DataClass implements Insertable<Image> {
     required this.semanticVector,
     required this.isScreenshot,
     required this.hasText,
+    this.tags,
     required this.blurScore,
     required this.dominantHue,
     required this.colorWarmth,
@@ -523,6 +545,9 @@ class Image extends DataClass implements Insertable<Image> {
     map['semantic_vector'] = Variable<Uint8List>(semanticVector);
     map['is_screenshot'] = Variable<bool>(isScreenshot);
     map['has_text'] = Variable<bool>(hasText);
+    if (!nullToAbsent || tags != null) {
+      map['tags'] = Variable<String>(tags);
+    }
     map['blur_score'] = Variable<double>(blurScore);
     map['dominant_hue'] = Variable<double>(dominantHue);
     map['color_warmth'] = Variable<double>(colorWarmth);
@@ -556,6 +581,7 @@ class Image extends DataClass implements Insertable<Image> {
       semanticVector: Value(semanticVector),
       isScreenshot: Value(isScreenshot),
       hasText: Value(hasText),
+      tags: tags == null && nullToAbsent ? const Value.absent() : Value(tags),
       blurScore: Value(blurScore),
       dominantHue: Value(dominantHue),
       colorWarmth: Value(colorWarmth),
@@ -589,6 +615,7 @@ class Image extends DataClass implements Insertable<Image> {
       semanticVector: serializer.fromJson<Uint8List>(json['semanticVector']),
       isScreenshot: serializer.fromJson<bool>(json['isScreenshot']),
       hasText: serializer.fromJson<bool>(json['hasText']),
+      tags: serializer.fromJson<String?>(json['tags']),
       blurScore: serializer.fromJson<double>(json['blurScore']),
       dominantHue: serializer.fromJson<double>(json['dominantHue']),
       colorWarmth: serializer.fromJson<double>(json['colorWarmth']),
@@ -613,6 +640,7 @@ class Image extends DataClass implements Insertable<Image> {
       'semanticVector': serializer.toJson<Uint8List>(semanticVector),
       'isScreenshot': serializer.toJson<bool>(isScreenshot),
       'hasText': serializer.toJson<bool>(hasText),
+      'tags': serializer.toJson<String?>(tags),
       'blurScore': serializer.toJson<double>(blurScore),
       'dominantHue': serializer.toJson<double>(dominantHue),
       'colorWarmth': serializer.toJson<double>(colorWarmth),
@@ -635,6 +663,7 @@ class Image extends DataClass implements Insertable<Image> {
     Uint8List? semanticVector,
     bool? isScreenshot,
     bool? hasText,
+    Value<String?> tags = const Value.absent(),
     double? blurScore,
     double? dominantHue,
     double? colorWarmth,
@@ -654,6 +683,7 @@ class Image extends DataClass implements Insertable<Image> {
     semanticVector: semanticVector ?? this.semanticVector,
     isScreenshot: isScreenshot ?? this.isScreenshot,
     hasText: hasText ?? this.hasText,
+    tags: tags.present ? tags.value : this.tags,
     blurScore: blurScore ?? this.blurScore,
     dominantHue: dominantHue ?? this.dominantHue,
     colorWarmth: colorWarmth ?? this.colorWarmth,
@@ -679,6 +709,7 @@ class Image extends DataClass implements Insertable<Image> {
           ? data.isScreenshot.value
           : this.isScreenshot,
       hasText: data.hasText.present ? data.hasText.value : this.hasText,
+      tags: data.tags.present ? data.tags.value : this.tags,
       blurScore: data.blurScore.present ? data.blurScore.value : this.blurScore,
       dominantHue: data.dominantHue.present
           ? data.dominantHue.value
@@ -707,6 +738,7 @@ class Image extends DataClass implements Insertable<Image> {
           ..write('semanticVector: $semanticVector, ')
           ..write('isScreenshot: $isScreenshot, ')
           ..write('hasText: $hasText, ')
+          ..write('tags: $tags, ')
           ..write('blurScore: $blurScore, ')
           ..write('dominantHue: $dominantHue, ')
           ..write('colorWarmth: $colorWarmth, ')
@@ -731,6 +763,7 @@ class Image extends DataClass implements Insertable<Image> {
     $driftBlobEquality.hash(semanticVector),
     isScreenshot,
     hasText,
+    tags,
     blurScore,
     dominantHue,
     colorWarmth,
@@ -757,6 +790,7 @@ class Image extends DataClass implements Insertable<Image> {
           ) &&
           other.isScreenshot == this.isScreenshot &&
           other.hasText == this.hasText &&
+          other.tags == this.tags &&
           other.blurScore == this.blurScore &&
           other.dominantHue == this.dominantHue &&
           other.colorWarmth == this.colorWarmth &&
@@ -778,6 +812,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
   final Value<Uint8List> semanticVector;
   final Value<bool> isScreenshot;
   final Value<bool> hasText;
+  final Value<String?> tags;
   final Value<double> blurScore;
   final Value<double> dominantHue;
   final Value<double> colorWarmth;
@@ -798,6 +833,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     this.semanticVector = const Value.absent(),
     this.isScreenshot = const Value.absent(),
     this.hasText = const Value.absent(),
+    this.tags = const Value.absent(),
     this.blurScore = const Value.absent(),
     this.dominantHue = const Value.absent(),
     this.colorWarmth = const Value.absent(),
@@ -819,6 +855,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     required Uint8List semanticVector,
     this.isScreenshot = const Value.absent(),
     this.hasText = const Value.absent(),
+    this.tags = const Value.absent(),
     required double blurScore,
     required double dominantHue,
     required double colorWarmth,
@@ -850,6 +887,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     Expression<Uint8List>? semanticVector,
     Expression<bool>? isScreenshot,
     Expression<bool>? hasText,
+    Expression<String>? tags,
     Expression<double>? blurScore,
     Expression<double>? dominantHue,
     Expression<double>? colorWarmth,
@@ -871,6 +909,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
       if (semanticVector != null) 'semantic_vector': semanticVector,
       if (isScreenshot != null) 'is_screenshot': isScreenshot,
       if (hasText != null) 'has_text': hasText,
+      if (tags != null) 'tags': tags,
       if (blurScore != null) 'blur_score': blurScore,
       if (dominantHue != null) 'dominant_hue': dominantHue,
       if (colorWarmth != null) 'color_warmth': colorWarmth,
@@ -894,6 +933,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     Value<Uint8List>? semanticVector,
     Value<bool>? isScreenshot,
     Value<bool>? hasText,
+    Value<String?>? tags,
     Value<double>? blurScore,
     Value<double>? dominantHue,
     Value<double>? colorWarmth,
@@ -915,6 +955,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
       semanticVector: semanticVector ?? this.semanticVector,
       isScreenshot: isScreenshot ?? this.isScreenshot,
       hasText: hasText ?? this.hasText,
+      tags: tags ?? this.tags,
       blurScore: blurScore ?? this.blurScore,
       dominantHue: dominantHue ?? this.dominantHue,
       colorWarmth: colorWarmth ?? this.colorWarmth,
@@ -964,6 +1005,9 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     if (hasText.present) {
       map['has_text'] = Variable<bool>(hasText.value);
     }
+    if (tags.present) {
+      map['tags'] = Variable<String>(tags.value);
+    }
     if (blurScore.present) {
       map['blur_score'] = Variable<double>(blurScore.value);
     }
@@ -1003,6 +1047,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
           ..write('semanticVector: $semanticVector, ')
           ..write('isScreenshot: $isScreenshot, ')
           ..write('hasText: $hasText, ')
+          ..write('tags: $tags, ')
           ..write('blurScore: $blurScore, ')
           ..write('dominantHue: $dominantHue, ')
           ..write('colorWarmth: $colorWarmth, ')
@@ -3045,6 +3090,7 @@ typedef $$ImagesTableCreateCompanionBuilder =
       required Uint8List semanticVector,
       Value<bool> isScreenshot,
       Value<bool> hasText,
+      Value<String?> tags,
       required double blurScore,
       required double dominantHue,
       required double colorWarmth,
@@ -3067,6 +3113,7 @@ typedef $$ImagesTableUpdateCompanionBuilder =
       Value<Uint8List> semanticVector,
       Value<bool> isScreenshot,
       Value<bool> hasText,
+      Value<String?> tags,
       Value<double> blurScore,
       Value<double> dominantHue,
       Value<double> colorWarmth,
@@ -3142,6 +3189,11 @@ class $$ImagesTableFilterComposer
 
   ColumnFilters<bool> get hasText => $composableBuilder(
     column: $table.hasText,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tags => $composableBuilder(
+    column: $table.tags,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3245,6 +3297,11 @@ class $$ImagesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get tags => $composableBuilder(
+    column: $table.tags,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get blurScore => $composableBuilder(
     column: $table.blurScore,
     builder: (column) => ColumnOrderings(column),
@@ -3325,6 +3382,9 @@ class $$ImagesTableAnnotationComposer
   GeneratedColumn<bool> get hasText =>
       $composableBuilder(column: $table.hasText, builder: (column) => column);
 
+  GeneratedColumn<String> get tags =>
+      $composableBuilder(column: $table.tags, builder: (column) => column);
+
   GeneratedColumn<double> get blurScore =>
       $composableBuilder(column: $table.blurScore, builder: (column) => column);
 
@@ -3388,6 +3448,7 @@ class $$ImagesTableTableManager
                 Value<Uint8List> semanticVector = const Value.absent(),
                 Value<bool> isScreenshot = const Value.absent(),
                 Value<bool> hasText = const Value.absent(),
+                Value<String?> tags = const Value.absent(),
                 Value<double> blurScore = const Value.absent(),
                 Value<double> dominantHue = const Value.absent(),
                 Value<double> colorWarmth = const Value.absent(),
@@ -3408,6 +3469,7 @@ class $$ImagesTableTableManager
                 semanticVector: semanticVector,
                 isScreenshot: isScreenshot,
                 hasText: hasText,
+                tags: tags,
                 blurScore: blurScore,
                 dominantHue: dominantHue,
                 colorWarmth: colorWarmth,
@@ -3430,6 +3492,7 @@ class $$ImagesTableTableManager
                 required Uint8List semanticVector,
                 Value<bool> isScreenshot = const Value.absent(),
                 Value<bool> hasText = const Value.absent(),
+                Value<String?> tags = const Value.absent(),
                 required double blurScore,
                 required double dominantHue,
                 required double colorWarmth,
@@ -3450,6 +3513,7 @@ class $$ImagesTableTableManager
                 semanticVector: semanticVector,
                 isScreenshot: isScreenshot,
                 hasText: hasText,
+                tags: tags,
                 blurScore: blurScore,
                 dominantHue: dominantHue,
                 colorWarmth: colorWarmth,

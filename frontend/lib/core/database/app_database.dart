@@ -17,7 +17,21 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2; // 跃迁至版本 2：添加人类可读标签 Tags 容器
+
+  @override
+  MigrationStrategy get migration {
+    return MigrationStrategy(
+      onCreate: (Migrator m) async {
+        await m.createAll();
+      },
+      onUpgrade: (Migrator m, int from, int to) async {
+        if (from < 2) {
+          await m.addColumn(images, images.tags); // 静默化无痛添加 Tags 列
+        }
+      },
+    );
+  }
 
   // 监听所有被索引的图片张数，形成动态流
   Stream<int> watchTotalImagesCount() {
