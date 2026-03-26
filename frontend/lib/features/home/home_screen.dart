@@ -11,7 +11,6 @@ import 'package:provider/provider.dart';
 import 'package:drift/drift.dart' as drift;
 import '../../core/database/app_database.dart' hide Image;
 import '../../core/services/media_scanner_service.dart';
-import '../../core/theme/app_theme.dart';
 import '../gallery/image_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -147,11 +146,11 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        // 蓝 → 紫渐变，色相有明显区分，不再是同色透明退化
+        // 主色蓝深浅渐变，清爽统一
         gradient: LinearGradient(
           colors: [
-            AppTheme.accentColor,
-            AppTheme.gradientEndColor,
+            Theme.of(context).colorScheme.primary,
+            Theme.of(context).colorScheme.primary.withValues(alpha: 0.72),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,

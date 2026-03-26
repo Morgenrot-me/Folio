@@ -8,7 +8,6 @@ class AppTheme {
   /// 主颜色种源（深海蓝）
   static const Color seedColor = Color(0xFF1E3A8A);
   static const Color accentColor = Color(0xFF3B82F6); // Blue 500
-  static const Color gradientEndColor = Color(0xFF6D28D9); // Violet 700（与蓝色形成对比渐变）
 
   /// 生成基于预设的亮色系主题
   static ThemeData get lightTheme {
@@ -18,7 +17,6 @@ class AppTheme {
         seedColor: seedColor,
         brightness: Brightness.light,
         primary: accentColor,
-        secondary: gradientEndColor,
         surface: const Color(0xFFF8FAFC),
         onSurface: const Color(0xFF0F172A),
       ),
