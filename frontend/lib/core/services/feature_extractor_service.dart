@@ -1,8 +1,9 @@
 // feature_extractor_service.dart
 // AI 特征提取服务（双管线）：
 //   管线一：ML Kit ImageLabeler（通用物体中文标签，bundled 离线）
-//   管线二：Places365 TFLite（场景地点中文标签，完全离线，43 MB 模型）
+//   管线二：Places365 TFLite（场景地点中文标签，完全离线）
 // 附加特征：ML Kit OCR + 拉普拉斯模糊度 + HSL 主色调/冷暖度 + 截图路径检测
+// 标签后处理：LabelNormalizer 同义词合并 + 黑名单过滤
 // Phase 2 预留：MobileCLIP TFLite 语义向量接口（代码槽位已注释保留）
 
 import 'dart:io';
@@ -17,6 +18,7 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 import '../database/app_database.dart';
 import 'package:drift/drift.dart';
 import '../constants/mlkit_zh_labels.dart';
+import '../constants/label_normalizer.dart';
 
 /// 多厂商截图路径关键字（小写匹配）
 const _screenshotKeywords = [
@@ -123,22 +125,17 @@ class FeatureExtractorService {
       dominantHue = colorResult[0];
       colorWarmth  = colorResult[1];
 
-      // 4c. Places365 场景标签
-      places365Tags = await _extractPlaces365Tags(decodedImage);
-
-      // 4d. Phase 2 预留：MobileCLIP 语义向量
-      // semanticVector = await _extractMobileCLIPVector(decodedImage);
+      // 4c. Places365 双输出：场景标签 + 512 维语义向量
+      final p365 = await _extractPlaces365Result(decodedImage);
+      places365Tags = p365.tags;
+      semanticVector = p365.vector; // 512 维 L2 归一化向量
     }
 
-    // ── 5. 合并标签（ML Kit + Places365，去重，最多 8 个） ────────────────
-    final allTags = <String>[];
-    final seen = <String>{};
-    for (final t in [...mlkitTags, ...places365Tags]) {
-      if (seen.add(t)) {
-        allTags.add(t);
-        if (allTags.length >= 8) break;
-      }
-    }
+    // ── 5. 合并标签（Places365 场景优先 + ML Kit 物体，归一化后最多 8 个） ─
+    // 排序原则：场景标签（Places365）对照片组织最有效，放在前面，
+    //          物体标签（ML Kit）补充内容细节，放在后面
+    final rawTags = [...places365Tags, ...mlkitTags];
+    final allTags = LabelNormalizer.normalize(rawTags, maxCount: 8);
     final tagsString = allTags.isNotEmpty ? allTags.join(', ') : null;
 
     // ── 6. 写库 ───────────────────────────────────────────────────────────
@@ -190,36 +187,47 @@ class FeatureExtractorService {
   // Places365 TFLite 场景标签
   // ===========================================================================
 
-  /// 返回 Top-3 场景标签（概率 > 0.05）
-  Future<List<String>> _extractPlaces365Tags(img.Image image) async {
+  /// 推理结果：场景标签 + 512 维语义向量
+  Future<({List<String> tags, Uint8List? vector})>
+      _extractPlaces365Result(img.Image image) async {
     await _initPlaces365IfNeeded();
-    if (!_places365Ready || _places365Interpreter == null) return [];
+    if (!_places365Ready || _places365Interpreter == null) {
+      return (tags: <String>[], vector: null);
+    }
     try {
-      final inputData =
-          await compute(_prepareP365Input, image);
-      final output =
-          List.generate(1, (_) => List.filled(365, 0.0));
-      _places365Interpreter!.run(
-          inputData.reshape([1, 224, 224, 3]), output);
+      final inputData = await compute(_prepareP365Input, image);
+      // 双输出：output[0]=feature[1×512], output[1]=logits[1×365]
+      final outFeature = [List.filled(512, 0.0)];
+      final outLogits  = [List.filled(365, 0.0)];
+      final outputs    = {0: outFeature, 1: outLogits};
+      _places365Interpreter!.runForMultipleInputs(
+        [inputData.reshape([1, 224, 224, 3])],
+        outputs,
+      );
 
-      final logits = (output[0] as List<double>);
-      final softmax = _softmax(logits);
+      // 语义向量（512 维 float32 → Uint8List）
+      final featureList = (outFeature[0] as List<dynamic>)
+          .cast<double>();
+      final vectorBytes =
+          Float32List.fromList(featureList).buffer.asUint8List();
 
-      // 取 Top-3，概率阈值 0.05
-      final indexed = softmax.asMap().entries.toList()
+      // 场景标签（softmax Top-3，阈值 0.05）
+      final logits    = (outLogits[0] as List<dynamic>).cast<double>();
+      final softmax   = _softmax(logits);
+      final indexed   = softmax.asMap().entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
-
-      final result = <String>[];
+      final tags = <String>[];
+      // 阈值 0.15：过滤低置信度噪音（比 0.05 更严格，避免错误场景标签）
       for (final entry in indexed.take(3)) {
-        if (entry.value < 0.05) break;
+        if (entry.value < 0.15) break;
         if (entry.key < _places365Labels.length) {
-          result.add(_places365Labels[entry.key]);
+          tags.add(_places365Labels[entry.key]);
         }
       }
-      return result;
+      return (tags: tags, vector: vectorBytes);
     } catch (e) {
       debugPrint('Places365 推理失败: $e');
-      return [];
+      return (tags: <String>[], vector: null);
     }
   }
 

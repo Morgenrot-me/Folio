@@ -157,6 +157,18 @@ class SmartFolderMatcherService {
         if (threshold == null) return false;
         return _compareDouble(image.colorWarmth, comparator, threshold);
 
+      // ── SEMANTIC_LABEL：按 AI 识别标签内容匹配 ──────────────────────────
+      // comparator: CONTAINS  → tags 字段包含该标签词
+      //             !CONTAINS → tags 字段不包含该标签词
+      // rawValue: 要匹配的中文标签（如 "海边" "狗" "餐厅"）
+      case 'SEMANTIC_LABEL':
+        final tags = image.tags ?? '';
+        if (tags.isEmpty) return comparator == '!CONTAINS';
+        // 按逗号分割后逐词比较，避免"海边"匹配到"海边别墅"等子串误匹配
+        final tagList = tags.split(',').map((t) => t.trim()).toList();
+        final matched = tagList.any((t) => t == rawValue.trim());
+        return comparator == 'CONTAINS' ? matched : !matched;
+
       default:
         return false;
     }
