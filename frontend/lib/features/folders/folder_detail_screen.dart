@@ -88,8 +88,9 @@ class FolderDetailScreen extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                       builder: (_) => ImageDetailScreen(
-                        imageRow: imgData,
-                        heroTag: tag,
+                        images: images,
+                        initialIndex: index,
+                        heroTag: 'folder_${folder.id}_${imgData.id}',
                       ),
                     ),
                   );

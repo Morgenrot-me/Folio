@@ -1,6 +1,10 @@
 // image_detail_screen.dart
-// 图片详情页：全屏沉浸式看图，右上角 ⓘ 按钮弹出磨砂玻璃信息面板。
-// 设计原则：「看图」是主要需求，信息是辅助，把技术细节藏起来，只展示用户能理解的内容。
+// 全屏沉浸式看图页，接近原生相册体验。
+// 功能：
+//   - PageView 左右滑动切换图片，信息面板内容随之同步
+//   - InteractiveViewer 捏合缩放（最大 6x），缩小到 1x 以下松手自动回弹
+//   - 点击图片切换顶部/底部栏显示（信息面板固定时不受影响）
+//   - 右上角 ⓘ 按钮弹出磨砂玻璃信息面板，📌 固定后常驻
 
 import 'dart:io';
 import 'dart:ui';
@@ -9,13 +13,16 @@ import 'package:flutter/services.dart';
 import '../../core/database/app_database.dart' as db;
 
 class ImageDetailScreen extends StatefulWidget {
-  final db.Image imageRow;
-  final Object heroTag;
+  final List<db.Image> images;
+  final int initialIndex;
+  /// 调用方传入的 hero tag（仅初始图片使用）
+  final Object? heroTag;
 
   const ImageDetailScreen({
     super.key,
-    required this.imageRow,
-    required this.heroTag,
+    required this.images,
+    required this.initialIndex,
+    this.heroTag,
   });
 
   @override
@@ -23,19 +30,28 @@ class ImageDetailScreen extends StatefulWidget {
 }
 
 class _ImageDetailScreenState extends State<ImageDetailScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
+  late PageController _pageController;
+  late int _currentIndex;
+
+  bool _showChrome = true; // 顶底栏是否可见
   bool _showInfo = false;
   bool _isPinned = false;
 
-  late final AnimationController _panelController;
-  late final Animation<Offset> _panelSlide;
+  late AnimationController _panelController;
+  late Animation<Offset> _panelSlide;
+
+  db.Image get _currentImage => widget.images[_currentIndex];
 
   @override
   void initState() {
     super.initState();
-    // 设置全屏沉浸式（隐藏状态栏/导航栏）
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge,
         overlays: [SystemUiOverlay.top]);
+
     _panelController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 280),
@@ -43,23 +59,37 @@ class _ImageDetailScreenState extends State<ImageDetailScreen>
     _panelSlide = Tween<Offset>(
       begin: const Offset(0, 1),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _panelController,
-      curve: Curves.easeOutCubic,
-    ));
+    ).animate(CurvedAnimation(parent: _panelController, curve: Curves.easeOutCubic));
   }
 
   @override
   void dispose() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    _pageController.dispose();
     _panelController.dispose();
     super.dispose();
+  }
+
+  void _onPageChanged(int index) {
+    setState(() => _currentIndex = index);
+    // 信息面板内容随页面自动更新，无需额外操作
+  }
+
+  void _handleMainTap() {
+    if (_showInfo && !_isPinned) {
+      // 未固定时点击关闭信息面板
+      _closePanel();
+    } else {
+      // 切换顶底栏的可见性
+      setState(() => _showChrome = !_showChrome);
+    }
   }
 
   void _toggleInfo() {
     setState(() => _showInfo = !_showInfo);
     if (_showInfo) {
       _panelController.forward();
+      setState(() => _showChrome = true); // 显示信息时确保顶栏可见
     } else {
       _isPinned = false;
       _panelController.reverse();
@@ -79,123 +109,125 @@ class _ImageDetailScreenState extends State<ImageDetailScreen>
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
-      body: GestureDetector(
-        // 点击主区域：未固定时关闭面板；已固定不关
-        onTap: () {
-          if (_showInfo && !_isPinned) _closePanel();
-        },
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // ── 1. 全屏图片（支持捏合缩放和双击放大）────────────────────────
-            Hero(
-              tag: widget.heroTag,
-              child: InteractiveViewer(
-                minScale: 1.0,
-                maxScale: 6.0,
-                child: Image.file(
-                  File(widget.imageRow.filePath),
-                  fit: BoxFit.contain,
-                  width: double.infinity,
-                  height: double.infinity,
-                  frameBuilder: (ctx, child, frame, wasSynchronouslyLoaded) {
-                    if (wasSynchronouslyLoaded || frame != null) return child;
-                    return const Center(
-                        child: CircularProgressIndicator(color: Colors.white));
-                  },
-                  errorBuilder: (ctx, err, stack) => const Center(
-                    child: Icon(Icons.broken_image_outlined,
-                        size: 72, color: Colors.white30),
-                  ),
-                ),
-              ),
-            ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // ── 1. PageView：左右滑动切换 ──────────────────────────────────────
+          PageView.builder(
+            controller: _pageController,
+            itemCount: widget.images.length,
+            onPageChanged: _onPageChanged,
+            itemBuilder: (ctx, index) {
+              final image = widget.images[index];
+              final isFirst = index == widget.initialIndex;
+              return _ImageViewPage(
+                image: image,
+                heroTag: (isFirst && widget.heroTag != null) ? widget.heroTag : null,
+                onTap: _handleMainTap,
+              );
+            },
+          ),
 
-            // ── 2. 顶部渐变栏（返回 + 信息按钮）─────────────────────────────
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
+          // ── 2. 顶部渐变栏（可隐藏）─────────────────────────────────────────
+          AnimatedOpacity(
+            opacity: _showChrome ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 200),
+            child: IgnorePointer(
+              ignoring: !_showChrome,
               child: Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Colors.black54, Colors.transparent],
+                    // 加深渐变，防止图标在浅色图片上看不清
+                    colors: [
+                      Color(0xCC000000), // 约 80% 不透明黑
+                      Color(0x44000000), // 约 27%
+                      Colors.transparent,
+                    ],
+                    stops: [0.0, 0.55, 1.0],
                   ),
                 ),
                 child: SafeArea(
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                            color: Colors.white),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                      Expanded(
-                        child: Text(
-                          widget.imageRow.fileName,
-                          style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
-                              overflow: TextOverflow.ellipsis),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                              color: Colors.white),
+                          onPressed: () => Navigator.pop(context),
                         ),
-                      ),
-                      // ⓘ 信息按钮
-                      IconButton(
-                        icon: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 200),
-                          child: Icon(
-                            _showInfo
-                                ? Icons.info_rounded
-                                : Icons.info_outline_rounded,
-                            key: ValueKey(_showInfo),
-                            color: _showInfo ? Colors.white : Colors.white70,
+                        Expanded(
+                          child: Text(
+                            _currentImage.fileName,
+                            style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                                overflow: TextOverflow.ellipsis),
                           ),
                         ),
-                        tooltip: 'AI 信息',
-                        onPressed: _toggleInfo,
-                      ),
-                    ],
+                        // 当前位置指示（如第 3/20 张）
+                        if (widget.images.length > 1)
+                          Text(
+                            '${_currentIndex + 1} / ${widget.images.length}',
+                            style: const TextStyle(
+                                color: Colors.white54, fontSize: 13),
+                          ),
+                        const SizedBox(width: 4),
+                        // ⓘ 信息按钮
+                        IconButton(
+                          icon: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            child: Icon(
+                              _showInfo ? Icons.info_rounded : Icons.info_outline_rounded,
+                              key: ValueKey(_showInfo),
+                              color: _showInfo ? Colors.white : Colors.white70,
+                            ),
+                          ),
+                          tooltip: '图片信息',
+                          onPressed: _toggleInfo,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
+          ),
 
-            // ── 3. 底部信息面板（磨砂玻璃，可固定）──────────────────────────
-            if (_showInfo)
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: SlideTransition(
-                  position: _panelSlide,
-                  child: _buildInfoPanel(context),
-                ),
+          // ── 3. 信息面板（磨砂玻璃，可固定）────────────────────────────────
+          if (_showInfo)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: SlideTransition(
+                position: _panelSlide,
+                child: _buildInfoPanel(context),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
 
-  // ── 信息面板 ─────────────────────────────────────────────────────────────
+  // ── 信息面板 ──────────────────────────────────────────────────────────────
 
   Widget _buildInfoPanel(BuildContext context) {
     return GestureDetector(
-      // 防止点击面板内部冒泡到关闭手势
-      onTap: () {},
+      onTap: () {}, // 阻止点击穿透到主区域
       child: ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
           child: Container(
-            color: Colors.black.withValues(alpha: 0.55),
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+            color: Colors.black.withValues(alpha: 0.58),
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 拖拽指示 + 固定/关闭按钮
+                // 拖拽条 + 操作按钮
                 Row(
                   children: [
                     const Spacer(),
@@ -208,31 +240,27 @@ class _ImageDetailScreenState extends State<ImageDetailScreen>
                       ),
                     ),
                     const Spacer(),
-                    // 📌 固定按钮
                     GestureDetector(
                       onTap: () => setState(() => _isPinned = !_isPinned),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                         child: Icon(
                           _isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-                          color: _isPinned ? Colors.white : Colors.white54,
+                          color: _isPinned ? Colors.white : Colors.white38,
                           size: 20,
                         ),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    // ✕ 关闭按钮
                     GestureDetector(
                       onTap: _closePanel,
                       child: const Icon(Icons.close_rounded,
-                          color: Colors.white54, size: 20),
+                          color: Colors.white38, size: 20),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
-
-                // 信息行列表
-                ..._buildInfoRows(context),
+                ..._buildInfoRows(_currentImage),
               ],
             ),
           ),
@@ -241,11 +269,9 @@ class _ImageDetailScreenState extends State<ImageDetailScreen>
     );
   }
 
-  List<Widget> _buildInfoRows(BuildContext context) {
-    final image = widget.imageRow;
+  List<Widget> _buildInfoRows(db.Image image) {
     final rows = <_InfoItem>[];
 
-    // 拍摄时间
     if (image.takenAt != null) {
       final dt = DateTime.fromMillisecondsSinceEpoch(image.takenAt!);
       rows.add(_InfoItem(
@@ -256,37 +282,32 @@ class _ImageDetailScreenState extends State<ImageDetailScreen>
       ));
     }
 
-    // 分辨率 + 大小
     rows.add(_InfoItem(
       icon: Icons.photo_size_select_actual_rounded,
       label: '尺寸',
-      value: '${image.width} × ${image.height}  ·  '
-          '${(image.fileSize / 1024 / 1024).toStringAsFixed(1)} MB',
+      value:
+          '${image.width} × ${image.height}  ·  ${(image.fileSize / 1024 / 1024).toStringAsFixed(1)} MB',
     ));
 
-    // 清晰度（用语言友好描述）
     if (image.isAnalyzed) {
-      final blurLabel = _blurLabel(image.blurScore);
       rows.add(_InfoItem(
         icon: Icons.lens_blur_rounded,
         label: '清晰度',
-        value: blurLabel,
+        value: _blurLabel(image.blurScore),
       ));
     }
 
-    // 截图 / 含文字
     final badges = <String>[];
-    if (image.isScreenshot) badges.add('截图');
-    if (image.hasText) badges.add('含文字');
+    if (image.isScreenshot) badges.add('📱 截图');
+    if (image.hasText) badges.add('📝 含文字');
     if (badges.isNotEmpty) {
       rows.add(_InfoItem(
         icon: Icons.label_outline_rounded,
         label: '属性',
-        value: badges.join('  ·  '),
+        value: badges.join('  '),
       ));
     }
 
-    // 色温
     if (image.isAnalyzed) {
       rows.add(_InfoItem(
         icon: Icons.thermostat_rounded,
@@ -295,10 +316,9 @@ class _ImageDetailScreenState extends State<ImageDetailScreen>
       ));
     }
 
-    // AI 识别标签
     if (image.tags != null && image.tags!.isNotEmpty) {
-      // 显示前 3 个标签，简洁
-      final tagList = image.tags!.split(',').take(3).map((t) => t.trim()).join('  ·  ');
+      final tagList =
+          image.tags!.split(',').take(3).map((t) => t.trim()).join('  ·  ');
       rows.add(_InfoItem(
         icon: Icons.auto_awesome_rounded,
         label: 'AI 识别',
@@ -306,9 +326,7 @@ class _ImageDetailScreenState extends State<ImageDetailScreen>
       ));
     }
 
-    return rows
-        .map((item) => _buildRow(item))
-        .toList();
+    return rows.map((item) => _buildRow(item)).toList();
   }
 
   Widget _buildRow(_InfoItem item) {
@@ -342,22 +360,111 @@ class _ImageDetailScreenState extends State<ImageDetailScreen>
     );
   }
 
-  // ── 辅助：清晰度语言描述 ──────────────────────────────────────────────────
   String _blurLabel(double score) {
     if (score >= 500) return '非常清晰';
     if (score >= 200) return '清晰';
-    if (score >= 80)  return '较清晰';
-    if (score >= 30)  return '轻微模糊';
+    if (score >= 80) return '较清晰';
+    if (score >= 30) return '轻微模糊';
     return '模糊';
   }
 
-  // ── 辅助：色温语言描述 ─────────────────────────────────────────────────────
   String _warmthLabel(double warmth) {
-    if (warmth > 0.3)  return '暖调（红/橙/黄）';
-    if (warmth > 0.1)  return '偏暖';
-    if (warmth < -0.3) return '冷调（蓝/青）';
+    if (warmth > 0.3) return '暖调（红 / 橙 / 黄）';
+    if (warmth > 0.1) return '偏暖';
+    if (warmth < -0.3) return '冷调（蓝 / 青）';
     if (warmth < -0.1) return '偏冷';
     return '中性';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 单张图片页：InteractiveViewer + 缩小回弹逻辑
+// ─────────────────────────────────────────────────────────────────────────────
+class _ImageViewPage extends StatefulWidget {
+  final db.Image image;
+  final Object? heroTag;
+  final VoidCallback onTap;
+
+  const _ImageViewPage({
+    required this.image,
+    required this.onTap,
+    this.heroTag,
+  });
+
+  @override
+  State<_ImageViewPage> createState() => _ImageViewPageState();
+}
+
+class _ImageViewPageState extends State<_ImageViewPage>
+    with SingleTickerProviderStateMixin {
+  final _transformController = TransformationController();
+  late AnimationController _snapController;
+  Animation<Matrix4>? _snapAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _snapController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+    )..addListener(() {
+        if (_snapAnimation != null) {
+          _transformController.value = _snapAnimation!.value;
+        }
+      });
+  }
+
+  @override
+  void dispose() {
+    _transformController.dispose();
+    _snapController.dispose();
+    super.dispose();
+  }
+
+  void _onInteractionEnd(ScaleEndDetails details) {
+    final scale = _transformController.value.getMaxScaleOnAxis();
+    if (scale < 1.0) {
+      // 松手后回弹到原始大小
+      _snapAnimation = Matrix4Tween(
+        begin: _transformController.value,
+        end: Matrix4.identity(),
+      ).animate(
+          CurvedAnimation(parent: _snapController, curve: Curves.easeOutBack));
+      _snapController.forward(from: 0.0);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Widget imageWidget = Image.file(
+      File(widget.image.filePath),
+      fit: BoxFit.contain,
+      width: double.infinity,
+      height: double.infinity,
+      frameBuilder: (ctx, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded || frame != null) return child;
+        return const Center(child: CircularProgressIndicator(color: Colors.white));
+      },
+      errorBuilder: (ctx, err, stack) => const Center(
+        child: Icon(Icons.broken_image_outlined, size: 72, color: Colors.white30),
+      ),
+    );
+
+    if (widget.heroTag != null) {
+      imageWidget = Hero(tag: widget.heroTag!, child: imageWidget);
+    }
+
+    return GestureDetector(
+      onTap: widget.onTap,
+      behavior: HitTestBehavior.opaque,
+      child: InteractiveViewer(
+        transformationController: _transformController,
+        onInteractionEnd: _onInteractionEnd,
+        minScale: 0.5, // 允许缩小到 50%
+        maxScale: 6.0,
+        child: imageWidget,
+      ),
+    );
   }
 }
 
@@ -365,6 +472,5 @@ class _InfoItem {
   final IconData icon;
   final String label;
   final String value;
-
   const _InfoItem({required this.icon, required this.label, required this.value});
 }

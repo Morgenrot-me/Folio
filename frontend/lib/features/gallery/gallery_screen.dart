@@ -120,8 +120,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (_) => ImageDetailScreen(
-                        imageRow: imgData,
-                        heroTag: imgData.id, // gallery 使用纯 id 作为 hero tag
+                        images: List.from(images),
+                        initialIndex: index,
+                        heroTag: imgData.id,
                       ),
                     ),
                   );

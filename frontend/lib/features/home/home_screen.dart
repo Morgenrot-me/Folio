@@ -111,8 +111,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         context,
                         MaterialPageRoute(
                           builder: (_) => ImageDetailScreen(
-                            imageRow: imgData,
-                            heroTag: 'home_${imgData.id}', // 统一 hero tag
+                            images: List.from(images),
+                            initialIndex: index,
+                            heroTag: 'home_${imgData.id}',
                           ),
                         ),
                       );
