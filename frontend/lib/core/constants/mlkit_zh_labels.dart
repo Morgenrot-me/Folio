@@ -1,7 +1,8 @@
 // mlkit_zh_labels.dart
 // ML Kit ImageLabeler 英文标签 → 中文静态翻译词典。
-// ML Kit 约返回 400 个标准化英文标签，此处提供覆盖全量的中文映射。
-// 未匹配时直接返回原始英文，不丢失信息。
+// ML Kit bundled on-device 模型约返回 400+ 个标准化英文标签。
+// 本词典尽量覆盖全量标签，未覆盖的回退返回原始英文。
+// 匹配策略：精确匹配 → 小写匹配 → 返回原文
 
 /// ML Kit ImageLabeler 的中文标签词典。
 /// 用法：MlKitZhLabels.translate("Dog") → "狗"
@@ -11,7 +12,8 @@ class MlKitZhLabels {
       _map[en] ?? _map[en.toLowerCase()] ?? en;
 
   static const Map<String, String> _map = {
-    // ── 动物 ──────────────────────────────────────────────────────────
+
+    // ── 动物（哺乳类）─────────────────────────────────────────────────────
     'Animal': '动物',
     'Dog': '狗',
     'Cat': '猫',
@@ -32,7 +34,7 @@ class MlKitZhLabels {
     'Elephant': '大象',
     'Tiger': '老虎',
     'Lion': '狮子',
-    'Panda': '熊猫', // Giant panda
+    'Panda': '熊猫',
     'Giant Panda': '大熊猫',
     'Monkey': '猴子',
     'Snake': '蛇',
@@ -51,13 +53,36 @@ class MlKitZhLabels {
     'Pet': '宠物',
     'Wildlife': '野生动物',
     'Marine mammal': '海洋哺乳动物',
-    // ── 人 ────────────────────────────────────────────────────────────
+    'Gerbil': '沙鼠',
+    'Camel': '骆驼',
+    'Giraffe': '长颈鹿',
+    'Zebra': '斑马',
+    'Hippopotamus': '河马',
+    'Rhinoceros': '犀牛',
+    'Crocodile': '鳄鱼',
+    'Parrot': '鹦鹉',
+    'Flamingo': '火烈鸟',
+    'Eagle': '老鹰',
+    'Owl': '猫头鹰',
+    'Squirrel': '松鼠',
+    'Hedgehog': '刺猬',
+    'Dog breed': '犬种',
+    'Shetland Sheepdog': '喜乐蒂牧羊犬',
+    'Himalayan': '喜马拉雅猫',
+    'Pomacentridae': '雀鲷鱼',
+    'Boxer': '拳师犬',
+    'Goldfish': '金鱼',
+    'Hamster': '仓鼠',
+    'Guinea pig': '豚鼠',
+
+    // ── 人 ────────────────────────────────────────────────────────────────
     'Person': '人',
     'Human': '人',
     'People': '人群',
     'Face': '人脸',
     'Facial expression': '表情',
     'Smile': '微笑',
+    'Laugh': '大笑',
     'Selfie': '自拍',
     'Child': '儿童',
     'Baby': '婴儿',
@@ -71,6 +96,14 @@ class MlKitZhLabels {
     'Friendship': '友情',
     'Couple': '情侣',
     'Portrait': '人像',
+    'Interaction': '互动',
+    'Community': '社群',
+    'Sitting': '坐姿',
+    'Eating': '进食',
+    'Beard': '胡须',
+    'Toe': '脚趾',
+
+    // ── 服装与时尚 ────────────────────────────────────────────────────────
     'Fashion': '时尚',
     'Clothing': '服装',
     'Dress': '连衣裙',
@@ -78,10 +111,19 @@ class MlKitZhLabels {
     'Jeans': '牛仔裤',
     'Hat': '帽子',
     'Glasses': '眼镜',
+    'Sunglasses': '墨镜',
     'Shoe': '鞋',
     'Bag': '包',
     'Jewelry': '首饰',
-    // ── 自然与户外 ─────────────────────────────────────────────────────
+    'Necklace': '项链',
+    'Bracelet': '手链',
+    'Shorts': '短裤',
+    'Swimwear': '泳衣',
+    'Wetsuit': '潜水服',
+    'Tie': '领带',
+    'Tights': '紧身裤',
+
+    // ── 自然与户外 ────────────────────────────────────────────────────────
     'Outdoor': '户外',
     'Nature': '自然',
     'Landscape': '风景',
@@ -125,7 +167,16 @@ class MlKitZhLabels {
     'Cliff': '悬崖',
     'Soil': '土壤',
     'Sand': '沙子',
-    // ── 食物与饮品 ─────────────────────────────────────────────────────
+    'Reef': '礁石',
+    'Iceberg': '冰山',
+    'Cave': '洞穴',
+    'Underwater': '水下',
+    'Jungle': '丛林',
+    'Twig': '细枝',
+    'Petal': '花瓣',
+    'Wetland': '湿地',
+
+    // ── 食物与饮品 ────────────────────────────────────────────────────────
     'Food': '食物',
     'Drink': '饮品',
     'Meal': '餐食',
@@ -137,10 +188,13 @@ class MlKitZhLabels {
     'Cake': '蛋糕',
     'Bread': '面包',
     'Pizza': '披萨',
+    'Hot dog': '热狗',
+    'Cheeseburger': '芝士汉堡',
     'Noodle': '面条',
     'Rice': '米饭',
     'Dumpling': '饺子',
     'Sushi': '寿司',
+    'Bento': '便当',
     'Meat': '肉类',
     'Chicken meat': '鸡肉',
     'Beef': '牛肉',
@@ -170,7 +224,10 @@ class MlKitZhLabels {
     'Fast food': '快餐',
     'Baked goods': '烘焙食品',
     'Cuisine': '菜肴',
-    // ── 建筑与城市 ─────────────────────────────────────────────────────
+    'Cookware and bakeware': '烹饪器具',
+    'Sink': '水槽',
+
+    // ── 建筑与城市 ────────────────────────────────────────────────────────
     'Building': '建筑',
     'Architecture': '建筑物',
     'House': '房屋',
@@ -218,7 +275,18 @@ class MlKitZhLabels {
     'Roof': '屋顶',
     'Stairs': '楼梯',
     'Corridor': '走廊',
-    // ── 交通工具 ──────────────────────────────────────────────────────
+    'Factory': '工厂',
+    'Construction': '建筑工地',
+    'Infrastructure': '基础设施',
+    'Pier': '码头',
+    'Pier (structure)': '码头',
+    'Bar': '酒吧',
+    'Cabinetry': '橱柜',
+    'Brick': '砖块',
+    'Poster': '海报',
+    'Shipwreck': '海难',
+
+    // ── 交通工具 ──────────────────────────────────────────────────────────
     'Vehicle': '交通工具',
     'Car': '汽车',
     'Truck': '卡车',
@@ -235,7 +303,14 @@ class MlKitZhLabels {
     'Van': '面包车',
     'Scooter': '电动车',
     'Military vehicle': '军用车辆',
-    // ── 电子设备与科技 ────────────────────────────────────────────────
+    'Tractor': '拖拉机',
+    'Sled': '雪橇',
+    'Wheelbarrow': '手推车',
+    'Junk': '帆船',
+    'Windshield': '挡风玻璃',
+    'Brig': '双桅帆船',
+
+    // ── 电子设备与科技 ────────────────────────────────────────────────────
     'Technology': '科技',
     'Electronics': '电子产品',
     'Computer': '电脑',
@@ -250,7 +325,9 @@ class MlKitZhLabels {
     'Screen': '屏幕',
     'Robot': '机器人',
     'Game controller': '游戏手柄',
-    // ── 运动与活动 ────────────────────────────────────────────────────
+    'Product': '产品',
+
+    // ── 运动与活动 ────────────────────────────────────────────────────────
     'Sport': '运动',
     'Sports': '体育',
     'Football': '足球',
@@ -271,7 +348,19 @@ class MlKitZhLabels {
     'Exercise': '锻炼',
     'Competition': '比赛',
     'Team': '团队',
-    // ── 艺术、音乐、娱乐 ──────────────────────────────────────────────
+    'Windsurfing': '帆板运动',
+    'Rafting': '漂流',
+    'Camping': '露营',
+    'Caving': '洞穴探险',
+    'Safari': '野外探险',
+    'Surfboard': '冲浪板',
+    'Roller': '滚轴',
+    'Prom': '舞会',
+    'Graduation': '毕业典礼',
+    'Bullfighting': '斗牛',
+    'Picnic': '野餐',
+
+    // ── 艺术、音乐、娱乐 ──────────────────────────────────────────────────
     'Art': '艺术',
     'Music': '音乐',
     'Concert': '演唱会',
@@ -295,7 +384,18 @@ class MlKitZhLabels {
     'Drawing': '绘画',
     'Sculpture': '雕塑',
     'Photography': '摄影',
-    // ── 日常物品 ──────────────────────────────────────────────────────
+    'Wreath': '花环',
+    'Circus': '马戏团',
+    'Aquarium': '水族馆',
+    'Bonfire': '篝火',
+    'Comics': '漫画',
+    'Casino': '赌场',
+    'Ferris wheel': '摩天轮',
+    'Watercolor paint': '水彩画',
+    'Statue': '雕像',
+    'Porcelain': '瓷器',
+
+    // ── 日常物品 ──────────────────────────────────────────────────────────
     'Furniture': '家具',
     'Chair': '椅子',
     'Table': '桌子',
@@ -306,6 +406,7 @@ class MlKitZhLabels {
     'Shelf': '书架',
     'Curtain': '窗帘',
     'Pillow': '枕头',
+    'Cushion': '坐垫',
     'Bottle': '瓶子',
     'Cup': '杯子',
     'Glasses (Drinkware)': '杯子',
@@ -323,7 +424,8 @@ class MlKitZhLabels {
     'Box': '盒子',
     'Bag (container)': '袋子',
     'Backpack': '背包',
-    // ── 文字与截图 ────────────────────────────────────────────────────
+
+    // ── 文字与界面 ────────────────────────────────────────────────────────
     'Text': '文字',
     'Document': '文件',
     'Logo': 'Logo',
@@ -332,11 +434,11 @@ class MlKitZhLabels {
     'Diagram': '图表',
     'Map': '地图',
     'Infographic': '信息图',
-    // ── 颜色 ──────────────────────────────────────────────────────────
+
+    // ── 场景与氛围 ────────────────────────────────────────────────────────
     'Black and white': '黑白',
     'Monochrome': '单色',
     'Colorfulness': '色彩丰富',
-    // ── 图像质感 ──────────────────────────────────────────────────────
     'Macro photography': '微距摄影',
     'Aerial photography': '航拍',
     'Night photography': '夜景摄影',
@@ -347,22 +449,65 @@ class MlKitZhLabels {
     'Texture': '纹理',
     'Pattern': '图案',
     'Abstract': '抽象',
-    // ── 健康 ──────────────────────────────────────────────────────────
+
+    // ── 健康与医疗 ────────────────────────────────────────────────────────
     'Health': '健康',
     'Medicine': '医疗',
     'Doctor': '医生',
     'Hospital (Healthcare)': '医院',
-    // ── 旅行 ──────────────────────────────────────────────────────────
+
+    // ── 旅行与地标 ────────────────────────────────────────────────────────
     'Travel': '旅行',
     'Tourism': '旅游',
     'Landmark': '地标',
     'Vacation': '度假',
     'Luggage': '行李',
     'Passport': '护照',
-    // 额外补全
     'Eiffel Tower': '埃菲尔铁塔',
     'Big Ben': '大本钟',
     'Statue of Liberty': '自由女神像',
     'Great Wall': '长城',
+
+    // ── 自然现象与抽象 ────────────────────────────────────────────────────
+    'Fire': '火',
+    'Smoke': '烟雾',
+    'Explosion': '爆炸',
+    'Lightning': '闪电',
+    'Earthquake': '地震',
+    'Flood': '洪水',
+    'Wind': '风',
+    'Space': '太空',
+    'Galaxy': '星系',
+    'Planet': '星球',
+    'Astronaut': '宇航员',
+
+    // ── 颜色描述 ──────────────────────────────────────────────────────────
+    'Red': '红色',
+    'Blue': '蓝色',
+    'Green': '绿色',
+    'Yellow': '黄色',
+    'Orange': '橙色',
+    'Purple': '紫色',
+    'Pink': '粉色',
+    'White': '白色',
+    'Black': '黑色',
+    'Brown': '棕色',
+    'Grey': '灰色',
+    'Gray': '灰色',
+    'Gold': '金色',
+    'Silver': '银色',
+
+    // ── 情感与概念（知识图谱）────────────────────────────────────────────
+    'Love': '爱',
+    'Happiness': '幸福',
+    'Sadness': '悲伤',
+    'Fun': '乐趣',
+    'Adventure': '冒险',
+    'Luxury': '奢华',
+    'Vintage': '复古',
+    'Modern': '现代',
+    'Traditional': '传统',
+    'Cute': '可爱',
+    'Funny': '搞笑',
   };
 }
