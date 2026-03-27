@@ -195,10 +195,8 @@ class BackgroundAiWorker {
       existingWorkPolicy: ExistingWorkPolicy.keep,
       initialDelay: Duration(minutes: delayMinutes),
       constraints: Constraints(
-        // 系统级低电量保护（约 <15-20% 时暂停）
-        requiresBatteryNotLow: true,
-        // workmanager 0.5.2 不支持 requiresNetworkConnectivity 参数
-        // 默认行为即不要求网络，本地 AI 完全离线运行
+        networkType: NetworkType.not_required, // 纯本地AI，不需要网络
+        requiresBatteryNotLow: true,           // 系统级低电量保护
       ),
     );
     debugPrint('[BgWorker] 任务已调度，延迟: ${delayMinutes}分钟');
