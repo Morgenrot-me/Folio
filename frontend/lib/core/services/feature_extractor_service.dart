@@ -1,58 +1,52 @@
 // feature_extractor_service.dart
-// AI 特征提取服务：TFLite MobileNet 语义向量 + MLKit OCR + 拉普拉斯模糊度 + 色调/冷暖度 + 截图检测
-// 改善：
-//   - 实现 dominantHue（主色调 0-360°）和 colorWarmth（冷暖度 -1~1）
-//   - 截图检测扩展为多厂商路径关键字列表（覆盖 MIUI/EMUI/ColorOS 等）
+// AI 特征提取服务：ML Kit ImageLabeler（通用中文标签）+ MLKit OCR + 拉普拉斯模糊度
+//                  + HSL 主色调/冷暖度 + 截图路径检测
+// Phase 1：MobileNetV1 标签管线已替换为 ML Kit ImageLabeler。
+//          语义向量（semanticVector）暂写 null，Phase 2 接入 MobileCLIP 后补全。
+// Phase 2 预留：_interpreter 字段槽位保留，用于后续接入 MobileCLIP TFLite。
 
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image/image.dart' as img;
-import 'package:tflite_flutter/tflite_flutter.dart';
+import 'package:tflite_flutter/tflite_flutter.dart'; // Phase 2 MobileCLIP 预留
 import '../database/app_database.dart';
 import 'package:drift/drift.dart';
-import '../constants/imagenet_labels.dart';
+import '../constants/mlkit_zh_labels.dart';
 
 /// 多厂商截图路径关键字（小写匹配）
 const _screenshotKeywords = [
-  'screenshot',   // 通用
-  'screen_shot',
-  'screencap',
-  'screen-shot',
-  'shot_',        // MIUI: /Shot_xxx/
-  'capture',      // 某些 HuaWei
-  '截图',          // 中文路径
-  '截屏',
+  'screenshot', 'screen_shot', 'screencap', 'screen-shot',
+  'shot_', // MIUI: /Shot_xxx/
+  'capture', // 某些 HuaWei
+  '截图', '截屏',
   'screenrecord', // 屏幕录制帧
 ];
 
 class FeatureExtractorService {
   final AppDatabase database;
-  late TextRecognizer _textRecognizer;
-  Interpreter? _interpreter;
 
-  bool get isModelLoaded => _interpreter != null;
+  late TextRecognizer _textRecognizer;
+  late ImageLabeler _imageLabeler;
+
+  /// Phase 2 占位符：MobileCLIP TFLite 解释器（模型文件就绪后启用）
+  Interpreter? _mobileclipInterpreter;
 
   FeatureExtractorService(this.database) {
     _textRecognizer = TextRecognizer(script: TextRecognitionScript.chinese);
-  }
-
-  /// 懒加载 TFLite 模型
-  Future<void> initModelIfNeeded() async {
-    if (_interpreter != null) return;
-    try {
-      _interpreter = await Interpreter.fromAsset('assets/models/mobilenet.tflite');
-      debugPrint('FeatureExtractorService: MobileNet 加载完成');
-    } catch (e) {
-      debugPrint('FeatureExtractorService: 模型加载失败 => $e');
-    }
+    // Bundled on-device 模式：confidence 阈值 0.65，完全离线
+    _imageLabeler = ImageLabeler(
+      options: ImageLabelerOptions(confidenceThreshold: 0.65),
+    );
   }
 
   void dispose() {
     _textRecognizer.close();
-    _interpreter?.close();
+    _imageLabeler.close();
+    _mobileclipInterpreter?.close();
   }
 
   /// 核心调度：对单张图片执行全维度特征提取并落库
@@ -61,58 +55,40 @@ class FeatureExtractorService {
     final file = File(filePath);
     if (!await file.exists()) return;
 
-    await initModelIfNeeded();
-
-    // 1. OCR 文字检测
+    // ── 1. OCR 文字检测 ─────────────────────────────────────────────────
     final hasText = await _detectText(file);
 
-    // 2. 多关键字截图检测
+    // ── 2. 截图检测（多厂商路径关键字） ────────────────────────────────
     final pathLower = filePath.toLowerCase();
-    final isScreenshot =
-        _screenshotKeywords.any((kw) => pathLower.contains(kw));
+    final isScreenshot = _screenshotKeywords.any((kw) => pathLower.contains(kw));
 
-    // 3. 解码图像（使用缩略图防止 OOM）
+    // ── 3. ML Kit 图像标注（通用中文标签，离线 bundled 模型） ───────────
+    final mlkitTags = await _extractMlKitTags(file);
+
+    // ── 4. 解码图像（使用缩略图防止 OOM） ───────────────────────────────
     final targetBytes = thumbBytes ?? await file.readAsBytes();
     final decodedImage = await compute(img.decodeImage, targetBytes);
 
     double blurScore = 0.0;
     double colorWarmth = 0.0;
     double dominantHue = 0.0;
+    // Phase 2：MobileCLIP 就绪后从 null 改为真实向量
     Uint8List? semanticVector;
 
     if (decodedImage != null) {
-      // 3a. 模糊度（子线程）
+      // 4a. 模糊度（子线程）
       blurScore = await compute(_calculateBlurScore, decodedImage);
 
-      // 3b. 主色调 + 冷暖度（子线程）
+      // 4b. 主色调 + 冷暖度（子线程）
       final colorResult = await compute(_calculateColorFeatures, decodedImage);
       dominantHue = colorResult[0];
       colorWarmth = colorResult[1];
 
-      // 4. 语义向量（TFLite MobileNet）
-      semanticVector = await _extractSemanticVector(decodedImage);
+      // 4c. Phase 2 预留：MobileCLIP 语义向量提取
+      // semanticVector = await _extractMobileCLIPVector(decodedImage);
     }
 
-    // 5. Top-6 可读标签
-    String? topTagsString;
-    if (semanticVector != null && semanticVector.isNotEmpty) {
-      try {
-        final floats = Float32List.view(semanticVector.buffer);
-        final indexed = floats.toList().asMap().entries.toList();
-        indexed.sort((a, b) => b.value.compareTo(a.value));
-        final topTags = <String>[];
-        for (int i = 0; i < 6; i++) {
-          if (indexed[i].key < ImageNetLabels.labels.length) {
-            topTags.add(ImageNetLabels.labels[indexed[i].key]);
-          }
-        }
-        topTagsString = topTags.join(', ');
-      } catch (e) {
-        debugPrint('提取可读标签失败: $e');
-      }
-    }
-
-    // 6. 写库，isAnalyzed=true 表明本记录已完成全管线分析
+    // ── 5. 写库（isAnalyzed=true 表明已完成全管线分析） ─────────────────
     await (database.update(database.images)
           ..where((tbl) => tbl.id.equals(imageId)))
         .write(ImagesCompanion(
@@ -123,14 +99,42 @@ class FeatureExtractorService {
       dominantHue: Value(dominantHue),
       semanticVector:
           semanticVector != null ? Value(semanticVector) : const Value.absent(),
-      tags: topTagsString != null ? Value(topTagsString) : const Value.absent(),
+      tags: mlkitTags.isNotEmpty ? Value(mlkitTags.join(', ')) : const Value.absent(),
       isAnalyzed: const Value(true),
     ));
   }
 
-  // =========================================================================
-  // 具体算法实现
-  // =========================================================================
+  // ===========================================================================
+  // ML Kit 图像标注（bundled on-device，完全离线）
+  // ===========================================================================
+
+  /// 返回置信度 ≥ 0.65 的中文标签列表（最多 5 个），按置信度降序。
+  Future<List<String>> _extractMlKitTags(File file) async {
+    try {
+      final inputImage = InputImage.fromFile(file);
+      final labels = await _imageLabeler.processImage(inputImage);
+
+      // 过滤 + 中文化 + 去重
+      final seen = <String>{};
+      final result = <String>[];
+      for (final label in labels) {
+        if (label.confidence < 0.65) continue;
+        final zh = MlKitZhLabels.translate(label.label);
+        if (seen.add(zh)) {
+          result.add(zh);
+          if (result.length >= 5) break;
+        }
+      }
+      return result;
+    } catch (e) {
+      debugPrint('ML Kit 标注失败: $e');
+      return [];
+    }
+  }
+
+  // ===========================================================================
+  // OCR
+  // ===========================================================================
 
   Future<bool> _detectText(File file) async {
     try {
@@ -141,6 +145,10 @@ class FeatureExtractorService {
       return false;
     }
   }
+
+  // ===========================================================================
+  // 图像算法（静态函数，运行在 compute 子线程）
+  // ===========================================================================
 
   static double _calculateBlurScore(img.Image image) {
     final resized = img.copyResize(image, width: 256, height: 256);
@@ -166,15 +174,10 @@ class FeatureExtractorService {
   }
 
   /// 计算主色调（dominant hue, 0–360°）和冷暖度（color warmth, -1.0 ~ +1.0）
-  /// 采样 32×32 缩略图，遍历所有像素取均值，性能友好且足够准确。
   static List<double> _calculateColorFeatures(img.Image image) {
-    // 缩到 32×32 快速采样，足够表征整体色调
     final small = img.copyResize(image, width: 32, height: 32);
-
     double totalR = 0, totalG = 0, totalB = 0;
     int count = 0;
-
-    // 累加所有像素 RGB
     for (final pixel in small) {
       totalR += pixel.r / 255.0;
       totalG += pixel.g / 255.0;
@@ -182,28 +185,19 @@ class FeatureExtractorService {
       count++;
     }
     if (count == 0) return [0.0, 0.0];
-
     final avgR = totalR / count;
     final avgG = totalG / count;
     final avgB = totalB / count;
-
-    // 冷暖度 = (红+黄权重) - (蓝+青权重)，范围 -1 ~ +1
-    // 简化：warmth ≈ (R - B)，暖色调（红/橙/黄）R>B，冷色调（蓝/青）B>R
     final colorWarmth = (avgR - avgB).clamp(-1.0, 1.0);
-
-    // 主色调：将均值 RGB 转为 HSL 取 H 值（0–360°）
     final hue = _rgbToHue(avgR, avgG, avgB);
-
     return [hue, colorWarmth];
   }
 
-  /// RGB（0.0–1.0）→ HSL Hue（0–360°）
   static double _rgbToHue(double r, double g, double b) {
     final maxC = max(r, max(g, b));
     final minC = min(r, min(g, b));
     final delta = maxC - minC;
-    if (delta < 1e-6) return 0.0; // 无彩色（灰色），色调无意义，定为 0°
-
+    if (delta < 1e-6) return 0.0;
     double hue;
     if (maxC == r) {
       hue = 60.0 * (((g - b) / delta) % 6);
@@ -215,30 +209,46 @@ class FeatureExtractorService {
     return hue < 0 ? hue + 360.0 : hue;
   }
 
-  static Float32List _prepareTensorInput(img.Image decodedImage) {
-    final resized = img.copyResize(decodedImage, width: 224, height: 224);
-    final inputList = Float32List(224 * 224 * 3);
-    int idx = 0;
-    for (final p in resized) {
-      inputList[idx++] = (p.r / 127.5) - 1.0;
-      inputList[idx++] = (p.g / 127.5) - 1.0;
-      inputList[idx++] = (p.b / 127.5) - 1.0;
-    }
-    return inputList;
-  }
+  // ===========================================================================
+  // Phase 2 预留：MobileCLIP TFLite 语义向量
+  // （mobileclip_s0_image_encoder.tflite 就绪后取消注释）
+  // ===========================================================================
 
-  Future<Uint8List?> _extractSemanticVector(img.Image decodedImage) async {
-    if (_interpreter == null) return null;
-    try {
-      final inputList = await compute(_prepareTensorInput, decodedImage);
-      final input = inputList.buffer.asFloat32List().reshape([1, 224, 224, 3]);
-      final output = List.filled(1000, 0.0).reshape([1, 1000]);
-      _interpreter!.run(input, output);
-      final outputVector = (output[0] as List<double>).cast<double>();
-      return Float32List.fromList(outputVector).buffer.asUint8List();
-    } catch (e) {
-      debugPrint('TFLite 推理失败: $e');
-      return null;
-    }
-  }
+  // Future<void> _initMobileclipIfNeeded() async {
+  //   if (_mobileclipInterpreter != null) return;
+  //   try {
+  //     _mobileclipInterpreter =
+  //         await Interpreter.fromAsset('assets/models/mobileclip_s0.tflite');
+  //   } catch (e) {
+  //     debugPrint('MobileCLIP 加载失败: $e');
+  //   }
+  // }
+
+  // static Float32List _prepareMobileclipInput(img.Image image) {
+  //   final resized = img.copyResize(image, width: 256, height: 256);
+  //   final input = Float32List(256 * 256 * 3);
+  //   int idx = 0;
+  //   for (final p in resized) {
+  //     input[idx++] = p.r / 255.0;
+  //     input[idx++] = p.g / 255.0;
+  //     input[idx++] = p.b / 255.0;
+  //   }
+  //   return input;
+  // }
+
+  // Future<Uint8List?> _extractMobileCLIPVector(img.Image image) async {
+  //   await _initMobileclipIfNeeded();
+  //   if (_mobileclipInterpreter == null) return null;
+  //   try {
+  //     final input = await compute(_prepareMobileclipInput, image);
+  //     final inputTensor = input.reshape([1, 256, 256, 3]);
+  //     final output = List.filled(512, 0.0).reshape([1, 512]);
+  //     _mobileclipInterpreter!.run(inputTensor, output);
+  //     final vector = (output[0] as List<double>).cast<double>();
+  //     return Float32List.fromList(vector).buffer.asUint8List();
+  //   } catch (e) {
+  //     debugPrint('MobileCLIP 推理失败: $e');
+  //     return null;
+  //   }
+  // }
 }
