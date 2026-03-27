@@ -20,6 +20,7 @@ import 'package:workmanager/workmanager.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:drift/native.dart';
+import 'app_settings_service.dart';
 import '../database/app_database.dart';
 import 'feature_extractor_service.dart';
 import 'smart_folder_matcher_service.dart';
@@ -30,8 +31,9 @@ const kAiAnalysisTaskName = 'ai_analysis_task';
 /// WorkManager 任务 tag（用于分组查询）
 const kAiAnalysisTaskTag = 'ai_analysis';
 
-/// 电量门槛：低于此值时推迟任务
-const _kBatteryThreshold = 50;
+/// 后台 AI 分析电量策略（不再硬编码，从 AppSettingsService 读取）
+// 保留作为回退默认值（首次安装未设置时使用）
+const _kDefaultBatteryThreshold = 50;
 
 /// 每张图片分析间隔（避免持续高负荷，对电量友好）
 const _kAnalysisDelay = Duration(milliseconds: 30);
@@ -62,16 +64,25 @@ void callbackDispatcher() {
 
 /// 执行一轮 AI 分析，返回 true 代表任务完成（不再重试）
 Future<bool> _runAiAnalysisTask() async {
-  // ── Step 1: 电量检查（运行时，精确到 50%）
+  // ── Step 1: 读取用户设定的电量策略
+  final policy = await AppSettingsService.getBatteryPolicy();
   final battery = Battery();
   final level = await battery.batteryLevel;
   final state = await battery.batteryState;
 
-  debugPrint('[BgWorker] 当前电量: $level%, 状态: $state');
+  debugPrint('[BgWorker] 当前电量: $level%, 状态: $state, 策略: ${policy.label}');
 
-  if (level < _kBatteryThreshold && state != BatteryState.charging) {
-    debugPrint('[BgWorker] 电量 $level% < $_kBatteryThreshold%，推迟到下次');
-    // 重新调度（2小时后再试），本次任务"成功"退出
+  // chargingOnly：只有充电时才运行
+  if (policy == BatteryPolicy.chargingOnly && state != BatteryState.charging) {
+    debugPrint('[BgWorker] 策略=仅充电，当前未充电，推迟 2 小时');
+    BackgroundAiWorker.schedule(delayMinutes: 120);
+    return true;
+  }
+
+  // 其他策略：检查电量门槛
+  final threshold = policy.minLevel > 0 ? policy.minLevel : _kDefaultBatteryThreshold;
+  if (level < threshold && state != BatteryState.charging) {
+    debugPrint('[BgWorker] 电量 $level% < $threshold%，推迟 2 小时');
     BackgroundAiWorker.schedule(delayMinutes: 120);
     return true;
   }
@@ -109,10 +120,12 @@ Future<bool> _runAiAnalysisTask() async {
       if (processed % 10 == 0) {
         final currentLevel = await battery.batteryLevel;
         final currentState = await battery.batteryState;
-        if (currentLevel < _kBatteryThreshold &&
-            currentState != BatteryState.charging) {
-          debugPrint('[BgWorker] 分析过程中电量下降到 $currentLevel%，暂停并重新调度');
-          // 已处理部分已落库，下次从断点继续
+        // 充电中永远查证通过（无论策略）
+        final shouldPause = currentState != BatteryState.charging &&
+            (policy == BatteryPolicy.chargingOnly ||
+                currentLevel < threshold);
+        if (shouldPause) {
+          debugPrint('[BgWorker] 分析过程中电量条件不满足（$currentLevel%），暂停并重新调度');
           BackgroundAiWorker.schedule(delayMinutes: 60);
           return true;
         }

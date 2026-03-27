@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../home/home_screen.dart';
 import '../gallery/gallery_screen.dart';
 import '../folders/folders_screen.dart';
+import '../settings/settings_screen.dart';
 
 class RootScreen extends StatefulWidget {
   const RootScreen({super.key});
@@ -23,7 +24,7 @@ class _RootScreenState extends State<RootScreen> {
     HomeScreen(),
     GalleryScreen(),
     FoldersScreen(),
-    _SettingsPlaceholder(),
+    SettingsScreen(),
   ];
 
   @override
@@ -60,46 +61,6 @@ class _RootScreenState extends State<RootScreen> {
             label: '设置',
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// 设置页占位：功能暂未开发，展示友好的空状态引导
-class _SettingsPlaceholder extends StatelessWidget {
-  const _SettingsPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('应用设置')),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.construction_rounded,
-              size: 72,
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              '设置中心开发中',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-                  ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '隐私权限、模型管理、数据清理等功能即将上线。',
-              style: TextStyle(
-                fontSize: 13,
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
