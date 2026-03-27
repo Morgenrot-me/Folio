@@ -401,9 +401,14 @@ class _ImageViewPageState extends State<_ImageViewPage>
   late AnimationController _snapController;
   Animation<Matrix4>? _snapAnimation;
 
+  /// scale > 1.0 时开启（让 InteractiveViewer 接管平移）；
+  /// scale <= 1.0 时关闭（把水平手势还给 PageView，让翻页正常工作）
+  bool _panEnabled = false;
+
   @override
   void initState() {
     super.initState();
+    _transformController.addListener(_onTransformChanged);
     _snapController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 280),
@@ -416,15 +421,24 @@ class _ImageViewPageState extends State<_ImageViewPage>
 
   @override
   void dispose() {
+    _transformController.removeListener(_onTransformChanged);
     _transformController.dispose();
     _snapController.dispose();
     super.dispose();
   }
 
+  /// 实时监听缩放比例，动态切换 panEnabled
+  void _onTransformChanged() {
+    final scale = _transformController.value.getMaxScaleOnAxis();
+    final shouldPan = scale > 1.01;
+    if (shouldPan != _panEnabled) {
+      setState(() => _panEnabled = shouldPan);
+    }
+  }
+
   void _onInteractionEnd(ScaleEndDetails details) {
     final scale = _transformController.value.getMaxScaleOnAxis();
     if (scale < 1.0) {
-      // 松手后回弹到原始大小
       _snapAnimation = Matrix4Tween(
         begin: _transformController.value,
         end: Matrix4.identity(),
@@ -443,10 +457,12 @@ class _ImageViewPageState extends State<_ImageViewPage>
       height: double.infinity,
       frameBuilder: (ctx, child, frame, wasSynchronouslyLoaded) {
         if (wasSynchronouslyLoaded || frame != null) return child;
-        return const Center(child: CircularProgressIndicator(color: Colors.white));
+        return const Center(
+            child: CircularProgressIndicator(color: Colors.white));
       },
       errorBuilder: (ctx, err, stack) => const Center(
-        child: Icon(Icons.broken_image_outlined, size: 72, color: Colors.white30),
+        child:
+            Icon(Icons.broken_image_outlined, size: 72, color: Colors.white30),
       ),
     );
 
@@ -460,7 +476,8 @@ class _ImageViewPageState extends State<_ImageViewPage>
       child: InteractiveViewer(
         transformationController: _transformController,
         onInteractionEnd: _onInteractionEnd,
-        minScale: 0.5, // 允许缩小到 50%
+        panEnabled: _panEnabled, // ← 关键：未放大时禁用平移，让 PageView 接管手势
+        minScale: 0.5,
         maxScale: 6.0,
         child: imageWidget,
       ),
