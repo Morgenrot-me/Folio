@@ -141,6 +141,17 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, Image> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _ocrTextMeta = const VerificationMeta(
+    'ocrText',
+  );
+  @override
+  late final GeneratedColumn<String> ocrText = GeneratedColumn<String>(
+    'ocr_text',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _tagsMeta = const VerificationMeta('tags');
   @override
   late final GeneratedColumn<String> tags = GeneratedColumn<String>(
@@ -241,6 +252,7 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, Image> {
     semanticVector,
     isScreenshot,
     hasText,
+    ocrText,
     tags,
     blurScore,
     dominantHue,
@@ -351,6 +363,12 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, Image> {
       context.handle(
         _hasTextMeta,
         hasText.isAcceptableOrUnknown(data['has_text']!, _hasTextMeta),
+      );
+    }
+    if (data.containsKey('ocr_text')) {
+      context.handle(
+        _ocrTextMeta,
+        ocrText.isAcceptableOrUnknown(data['ocr_text']!, _ocrTextMeta),
       );
     }
     if (data.containsKey('tags')) {
@@ -470,6 +488,10 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, Image> {
         DriftSqlType.bool,
         data['${effectivePrefix}has_text'],
       )!,
+      ocrText: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}ocr_text'],
+      ),
       tags: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}tags'],
@@ -524,6 +546,12 @@ class Image extends DataClass implements Insertable<Image> {
   final Uint8List semanticVector;
   final bool isScreenshot;
   final bool hasText;
+
+  /// v4: OCR提取的过滤后文字内容
+  ///   NULL  = 尚未执行 OCR（后台任务待处理）
+  ///   ''    = OCR已完成但无有效内容
+  ///   其他  = 过滤后的有效文字
+  final String? ocrText;
   final String? tags;
   final double blurScore;
   final double dominantHue;
@@ -547,6 +575,7 @@ class Image extends DataClass implements Insertable<Image> {
     required this.semanticVector,
     required this.isScreenshot,
     required this.hasText,
+    this.ocrText,
     this.tags,
     required this.blurScore,
     required this.dominantHue,
@@ -575,6 +604,9 @@ class Image extends DataClass implements Insertable<Image> {
     map['semantic_vector'] = Variable<Uint8List>(semanticVector);
     map['is_screenshot'] = Variable<bool>(isScreenshot);
     map['has_text'] = Variable<bool>(hasText);
+    if (!nullToAbsent || ocrText != null) {
+      map['ocr_text'] = Variable<String>(ocrText);
+    }
     if (!nullToAbsent || tags != null) {
       map['tags'] = Variable<String>(tags);
     }
@@ -612,6 +644,9 @@ class Image extends DataClass implements Insertable<Image> {
       semanticVector: Value(semanticVector),
       isScreenshot: Value(isScreenshot),
       hasText: Value(hasText),
+      ocrText: ocrText == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ocrText),
       tags: tags == null && nullToAbsent ? const Value.absent() : Value(tags),
       blurScore: Value(blurScore),
       dominantHue: Value(dominantHue),
@@ -647,6 +682,7 @@ class Image extends DataClass implements Insertable<Image> {
       semanticVector: serializer.fromJson<Uint8List>(json['semanticVector']),
       isScreenshot: serializer.fromJson<bool>(json['isScreenshot']),
       hasText: serializer.fromJson<bool>(json['hasText']),
+      ocrText: serializer.fromJson<String?>(json['ocrText']),
       tags: serializer.fromJson<String?>(json['tags']),
       blurScore: serializer.fromJson<double>(json['blurScore']),
       dominantHue: serializer.fromJson<double>(json['dominantHue']),
@@ -673,6 +709,7 @@ class Image extends DataClass implements Insertable<Image> {
       'semanticVector': serializer.toJson<Uint8List>(semanticVector),
       'isScreenshot': serializer.toJson<bool>(isScreenshot),
       'hasText': serializer.toJson<bool>(hasText),
+      'ocrText': serializer.toJson<String?>(ocrText),
       'tags': serializer.toJson<String?>(tags),
       'blurScore': serializer.toJson<double>(blurScore),
       'dominantHue': serializer.toJson<double>(dominantHue),
@@ -697,6 +734,7 @@ class Image extends DataClass implements Insertable<Image> {
     Uint8List? semanticVector,
     bool? isScreenshot,
     bool? hasText,
+    Value<String?> ocrText = const Value.absent(),
     Value<String?> tags = const Value.absent(),
     double? blurScore,
     double? dominantHue,
@@ -718,6 +756,7 @@ class Image extends DataClass implements Insertable<Image> {
     semanticVector: semanticVector ?? this.semanticVector,
     isScreenshot: isScreenshot ?? this.isScreenshot,
     hasText: hasText ?? this.hasText,
+    ocrText: ocrText.present ? ocrText.value : this.ocrText,
     tags: tags.present ? tags.value : this.tags,
     blurScore: blurScore ?? this.blurScore,
     dominantHue: dominantHue ?? this.dominantHue,
@@ -745,6 +784,7 @@ class Image extends DataClass implements Insertable<Image> {
           ? data.isScreenshot.value
           : this.isScreenshot,
       hasText: data.hasText.present ? data.hasText.value : this.hasText,
+      ocrText: data.ocrText.present ? data.ocrText.value : this.ocrText,
       tags: data.tags.present ? data.tags.value : this.tags,
       blurScore: data.blurScore.present ? data.blurScore.value : this.blurScore,
       dominantHue: data.dominantHue.present
@@ -777,6 +817,7 @@ class Image extends DataClass implements Insertable<Image> {
           ..write('semanticVector: $semanticVector, ')
           ..write('isScreenshot: $isScreenshot, ')
           ..write('hasText: $hasText, ')
+          ..write('ocrText: $ocrText, ')
           ..write('tags: $tags, ')
           ..write('blurScore: $blurScore, ')
           ..write('dominantHue: $dominantHue, ')
@@ -790,7 +831,7 @@ class Image extends DataClass implements Insertable<Image> {
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     filePath,
     fileName,
@@ -803,6 +844,7 @@ class Image extends DataClass implements Insertable<Image> {
     $driftBlobEquality.hash(semanticVector),
     isScreenshot,
     hasText,
+    ocrText,
     tags,
     blurScore,
     dominantHue,
@@ -811,7 +853,7 @@ class Image extends DataClass implements Insertable<Image> {
     clusterId,
     gpsLat,
     gpsLon,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -831,6 +873,7 @@ class Image extends DataClass implements Insertable<Image> {
           ) &&
           other.isScreenshot == this.isScreenshot &&
           other.hasText == this.hasText &&
+          other.ocrText == this.ocrText &&
           other.tags == this.tags &&
           other.blurScore == this.blurScore &&
           other.dominantHue == this.dominantHue &&
@@ -854,6 +897,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
   final Value<Uint8List> semanticVector;
   final Value<bool> isScreenshot;
   final Value<bool> hasText;
+  final Value<String?> ocrText;
   final Value<String?> tags;
   final Value<double> blurScore;
   final Value<double> dominantHue;
@@ -876,6 +920,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     this.semanticVector = const Value.absent(),
     this.isScreenshot = const Value.absent(),
     this.hasText = const Value.absent(),
+    this.ocrText = const Value.absent(),
     this.tags = const Value.absent(),
     this.blurScore = const Value.absent(),
     this.dominantHue = const Value.absent(),
@@ -899,6 +944,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     required Uint8List semanticVector,
     this.isScreenshot = const Value.absent(),
     this.hasText = const Value.absent(),
+    this.ocrText = const Value.absent(),
     this.tags = const Value.absent(),
     required double blurScore,
     required double dominantHue,
@@ -932,6 +978,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     Expression<Uint8List>? semanticVector,
     Expression<bool>? isScreenshot,
     Expression<bool>? hasText,
+    Expression<String>? ocrText,
     Expression<String>? tags,
     Expression<double>? blurScore,
     Expression<double>? dominantHue,
@@ -955,6 +1002,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
       if (semanticVector != null) 'semantic_vector': semanticVector,
       if (isScreenshot != null) 'is_screenshot': isScreenshot,
       if (hasText != null) 'has_text': hasText,
+      if (ocrText != null) 'ocr_text': ocrText,
       if (tags != null) 'tags': tags,
       if (blurScore != null) 'blur_score': blurScore,
       if (dominantHue != null) 'dominant_hue': dominantHue,
@@ -980,6 +1028,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     Value<Uint8List>? semanticVector,
     Value<bool>? isScreenshot,
     Value<bool>? hasText,
+    Value<String?>? ocrText,
     Value<String?>? tags,
     Value<double>? blurScore,
     Value<double>? dominantHue,
@@ -1003,6 +1052,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
       semanticVector: semanticVector ?? this.semanticVector,
       isScreenshot: isScreenshot ?? this.isScreenshot,
       hasText: hasText ?? this.hasText,
+      ocrText: ocrText ?? this.ocrText,
       tags: tags ?? this.tags,
       blurScore: blurScore ?? this.blurScore,
       dominantHue: dominantHue ?? this.dominantHue,
@@ -1054,6 +1104,9 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     if (hasText.present) {
       map['has_text'] = Variable<bool>(hasText.value);
     }
+    if (ocrText.present) {
+      map['ocr_text'] = Variable<String>(ocrText.value);
+    }
     if (tags.present) {
       map['tags'] = Variable<String>(tags.value);
     }
@@ -1099,6 +1152,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
           ..write('semanticVector: $semanticVector, ')
           ..write('isScreenshot: $isScreenshot, ')
           ..write('hasText: $hasText, ')
+          ..write('ocrText: $ocrText, ')
           ..write('tags: $tags, ')
           ..write('blurScore: $blurScore, ')
           ..write('dominantHue: $dominantHue, ')
@@ -3178,6 +3232,7 @@ typedef $$ImagesTableCreateCompanionBuilder =
       required Uint8List semanticVector,
       Value<bool> isScreenshot,
       Value<bool> hasText,
+      Value<String?> ocrText,
       Value<String?> tags,
       required double blurScore,
       required double dominantHue,
@@ -3202,6 +3257,7 @@ typedef $$ImagesTableUpdateCompanionBuilder =
       Value<Uint8List> semanticVector,
       Value<bool> isScreenshot,
       Value<bool> hasText,
+      Value<String?> ocrText,
       Value<String?> tags,
       Value<double> blurScore,
       Value<double> dominantHue,
@@ -3302,6 +3358,11 @@ class $$ImagesTableFilterComposer
 
   ColumnFilters<bool> get hasText => $composableBuilder(
     column: $table.hasText,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ocrText => $composableBuilder(
+    column: $table.ocrText,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3440,6 +3501,11 @@ class $$ImagesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get ocrText => $composableBuilder(
+    column: $table.ocrText,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get tags => $composableBuilder(
     column: $table.tags,
     builder: (column) => ColumnOrderings(column),
@@ -3529,6 +3595,9 @@ class $$ImagesTableAnnotationComposer
 
   GeneratedColumn<bool> get hasText =>
       $composableBuilder(column: $table.hasText, builder: (column) => column);
+
+  GeneratedColumn<String> get ocrText =>
+      $composableBuilder(column: $table.ocrText, builder: (column) => column);
 
   GeneratedColumn<String> get tags =>
       $composableBuilder(column: $table.tags, builder: (column) => column);
@@ -3626,6 +3695,7 @@ class $$ImagesTableTableManager
                 Value<Uint8List> semanticVector = const Value.absent(),
                 Value<bool> isScreenshot = const Value.absent(),
                 Value<bool> hasText = const Value.absent(),
+                Value<String?> ocrText = const Value.absent(),
                 Value<String?> tags = const Value.absent(),
                 Value<double> blurScore = const Value.absent(),
                 Value<double> dominantHue = const Value.absent(),
@@ -3648,6 +3718,7 @@ class $$ImagesTableTableManager
                 semanticVector: semanticVector,
                 isScreenshot: isScreenshot,
                 hasText: hasText,
+                ocrText: ocrText,
                 tags: tags,
                 blurScore: blurScore,
                 dominantHue: dominantHue,
@@ -3672,6 +3743,7 @@ class $$ImagesTableTableManager
                 required Uint8List semanticVector,
                 Value<bool> isScreenshot = const Value.absent(),
                 Value<bool> hasText = const Value.absent(),
+                Value<String?> ocrText = const Value.absent(),
                 Value<String?> tags = const Value.absent(),
                 required double blurScore,
                 required double dominantHue,
@@ -3694,6 +3766,7 @@ class $$ImagesTableTableManager
                 semanticVector: semanticVector,
                 isScreenshot: isScreenshot,
                 hasText: hasText,
+                ocrText: ocrText,
                 tags: tags,
                 blurScore: blurScore,
                 dominantHue: dominantHue,

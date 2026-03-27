@@ -38,6 +38,10 @@ const _kDefaultBatteryThreshold = 50;
 /// 每张图片分析间隔（避免持续高负荷，对电量友好）
 const _kAnalysisDelay = Duration(milliseconds: 30);
 
+/// 模块级取消标志（供顶层函数 _runAiAnalysisTask 使用）
+/// BackgroundAiWorker.cancel() 调用时设为 true
+bool _workerCancelled = false;
+
 // =============================================================================
 // ★ 顶层函数：必须是顶层函数，WorkManager 通过反射调用
 // =============================================================================
@@ -162,7 +166,7 @@ Future<bool> _runAiAnalysisTask() async {
     debugPrint('[BgWorker] OCR 待处理: ${pendingOcr.length} 张');
 
     for (final image in pendingOcr) {
-      if (_isAnalysisCancelled) break;
+      if (_workerCancelled) break;
 
       // 每 10 张检查一次电量
       if (pendingOcr.indexOf(image) % 10 == 0) {
@@ -236,6 +240,7 @@ class BackgroundAiWorker {
 
   /// 取消所有 AI 分析后台任务
   static Future<void> cancel() async {
+    _workerCancelled = true;
     await Workmanager().cancelByTag(kAiAnalysisTaskTag);
     debugPrint('[BgWorker] 后台任务已取消');
   }

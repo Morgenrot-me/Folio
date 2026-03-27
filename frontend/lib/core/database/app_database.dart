@@ -47,8 +47,9 @@ class AppDatabase extends _$AppDatabase {
           await m.addColumn(images, images.isAnalyzed);
         }
         if (from < 4) {
-          // v4：新增 OCR 文字字段（NULL = 待处理）
-          await m.addColumn(images, images.ocrText);
+          // v4：新增 OCR 文字字段，用原生 SQL 规避 addColumn 泛型限制
+          await customStatement(
+              'ALTER TABLE images ADD COLUMN ocr_text TEXT');
         }
       },
     );
