@@ -1,0 +1,365 @@
+airfield
+airplane cabin
+机场候机厅
+壁龛
+小巷
+圆形剧场
+游乐场
+游乐园
+outdoor
+水族馆
+水渠
+arcade
+拱门
+archaelogical excavation
+档案馆
+hockey
+performance
+rodeo
+army base
+美术馆
+艺术学校
+艺术工作室
+artists loft
+assembly line
+outdoor
+public
+阁楼
+礼堂
+汽车工厂
+auto showroom
+荒地
+shop
+exterior
+interior
+ball pit
+ballroom
+竹林
+bank vault
+宴会厅
+酒吧
+谷仓
+barndoor
+baseball field
+地下室
+indoor
+浴室
+indoor
+outdoor
+海滩
+海滨别墅
+美容院
+bedchamber
+卧室
+beer garden
+啤酒厅
+berth
+生物实验室
+木栈道
+船甲板
+船屋
+书店
+indoor
+植物园
+indoor
+保龄球馆
+拳击场
+桥梁
+建筑外墙
+bullring
+burial chamber
+公交车内
+indoor
+肉铺
+孤山
+outdoor
+自助餐厅
+露营地
+校园
+natural
+urban
+糖果店
+峡谷
+车厢内
+carrousel
+城堡
+catacomb
+公墓
+木屋
+化学实验室
+儿童房
+indoor
+outdoor
+教室
+洁净室
+悬崖
+衣橱
+服装店
+海岸
+驾驶舱
+咖啡店
+机房
+会议中心
+会议室
+建筑工地
+玉米地
+corral
+走廊
+农舍
+法院
+庭院
+小溪
+crevasse
+人行横道
+水坝
+熟食店
+department store
+sand
+vegetation
+desert road
+outdoor
+dining hall
+餐室
+迪厅
+outdoor
+宿舍
+市中心
+dressing room
+车道
+药店
+door
+elevator lobby
+elevator shaft
+大使馆
+发动机房
+门厅
+indoor
+挖掘现场
+fabric store
+农场
+快餐厅
+cultivated
+wild
+field road
+消防梯
+消防站
+fishpond
+indoor
+indoor
+food court
+足球场
+broadleaf
+forest path
+forest road
+正式花园
+喷泉
+船廊
+indoor
+outdoor
+加油站
+exterior
+indoor
+outdoor
+gift shop
+冰川
+高尔夫球场
+indoor
+outdoor
+岩洞
+indoor
+indoor
+outdoor
+港口
+五金店
+干草地
+直升机停机坪
+公路
+家庭办公室
+home theater
+医院
+病房
+hot spring
+outdoor
+酒店房间
+住宅
+outdoor
+冰淇淋店
+浮冰
+冰架
+indoor
+outdoor
+冰山
+冰屋
+工业区
+outdoor
+小岛
+indoor
+监狱牢房
+日式花园
+珠宝店
+废料场
+古集市
+outdoor
+幼儿园教室
+厨房
+lagoon
+natural
+landfill
+landing deck
+洗衣店
+草坪
+演讲厅
+议事厅
+indoor
+outdoor
+灯塔
+客厅
+装卸站
+大堂
+船闸
+更衣室
+大厦
+manufactured home
+indoor
+outdoor
+沼泽
+武术馆
+陵墓
+古城区
+mezzanine
+water
+outdoor
+汽车旅馆
+山
+山路
+雪山
+indoor
+indoor
+outdoor
+音乐工作室
+自然历史博物馆
+nursery
+养老院
+oast house
+大海
+办公室
+办公楼
+office cubicles
+oilrig
+手术室
+果园
+orchestra pit
+宝塔
+宫殿
+储藏室
+park
+indoor
+outdoor
+停车场
+牧场
+露台
+亭子
+pet shop
+药店
+电话亭
+physics laboratory
+野餐区
+码头
+披萨店
+操场
+游戏室
+广场
+池塘
+门廊
+promenade
+indoor
+赛马场
+赛车场
+木筏
+铁轨
+雨林
+接待处
+休息室
+修理店
+住宅区
+餐厅
+餐厅厨房
+餐厅露台
+稻田
+河流
+岩石拱
+屋顶花园
+绳桥
+废墟
+跑道
+sandbox
+sauna
+schoolhouse
+science museum
+server room
+shed
+shoe shop
+shopfront
+indoor
+shower
+滑雪度假村
+滑雪坡
+天空
+摩天大楼
+贫民窟
+雪地
+足球场
+马厩
+baseball
+football
+soccer
+indoor
+outdoor
+楼梯
+storage room
+街道
+platform
+超市
+sushi bar
+沼泽地
+swimming hole
+indoor
+outdoor
+outdoor
+电视室
+电视演播室
+asia
+throne room
+ticket booth
+绿植园艺
+塔楼
+玩具店
+train interior
+platform
+林场
+tree house
+战壕
+tundra
+ocean deep
+工具室
+山谷
+蔬菜园
+veterinarians office
+高架桥
+village
+vineyard
+火山
+outdoor
+等候室
+water park
+水塔
+瀑布
+饮水处
+海浪
+湿吧台
+麦田
+风电场
+风车
+庭院
+青年旅舍
+zen garden
