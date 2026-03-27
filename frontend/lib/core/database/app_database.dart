@@ -15,7 +15,17 @@ part 'app_database.g.dart';
 
 @DriftDatabase(tables: [Images, SmartFolders, FolderRules, Clusters, ImageFolderMap])
 class AppDatabase extends _$AppDatabase {
+  /// 默认构造：用于前台主 Isolate（路径由 path_provider 自动解析）
   AppDatabase() : super(_openConnection());
+
+  /// WorkManager 专用构造：直接传入已知路径的数据库文件
+  /// WorkManager Isolate 同样可以调用 path_provider，但为了更清晰地控制
+  /// 文件路径，提供此工厂方法
+  AppDatabase.fromFile(File dbFile)
+      : super(NativeDatabase.createInBackground(
+          dbFile,
+          setup: (db) => db.execute('PRAGMA foreign_keys = ON'),
+        ));
 
   @override
   int get schemaVersion => 3; // v3：新增 isAnalyzed 特征完成标志列

@@ -12,6 +12,7 @@ import 'package:drift/drift.dart' as drift;
 import '../../core/database/app_database.dart' hide Image;
 import '../../core/services/media_scanner_service.dart';
 import '../../core/services/smart_folder_matcher_service.dart';
+import '../../core/services/background_ai_worker.dart';
 import '../gallery/image_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -25,7 +26,8 @@ class _HomeScreenState extends State<HomeScreen>
     with TickerProviderStateMixin {
   bool _isScanning = false;   // Phase 1 入库中
   bool _isMatching = false;   // 手动规则匹配中
-  bool _isAnalyzing = false;  // Phase 2 后台AI分析中
+  // 注意：Phase 2 AI 分析现在由 WorkManager 后台执行，无需前台持有状态
+  //   进度通过 watchAnalyzedImagesCount() Stream 自动更新
 
   /// 手机相册总张数（扫描开始瞬间由回调填入，固定不变）
   int? _libraryTotal;
@@ -58,11 +60,7 @@ class _HomeScreenState extends State<HomeScreen>
                 icon: _isScanning
                     ? Icons.hourglass_top_rounded
                     : Icons.sync_rounded,
-                label: _isScanning
-                    ? '入库中...'
-                    : _isAnalyzing
-                        ? 'AI分析中'
-                        : '特征扫描提取',
+                label: _isScanning ? '入库中...' : '特征扫描提取',
                 enabled: !_isScanning && !_isMatching,
                 onTap: _handleScan,
               ),
@@ -249,10 +247,8 @@ class _HomeScreenState extends State<HomeScreen>
                         const SizedBox(height: 6),
                         Text(
                           total > 0
-                              ? (_isAnalyzing
-                                  ? 'AI 分析中... $analyzed / $total 张（$pct%）'
-                                  : 'AI 分析完成 $analyzed / $total 张（$pct%）')
-                              : '尚未扫描，点击"特征扫描提取"开始',
+                              ? 'AI 分析中... $analyzed / $total 张（$pct%）'
+                              : 'AI 分析完成 $analyzed / $total 张（$pct%）',
                           style: const TextStyle(
                               color: Colors.white70,
                               fontSize: 11,
@@ -393,14 +389,13 @@ class _HomeScreenState extends State<HomeScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✅ 入库完成，新增 $newCount 张！AI 分析后台启动...')),
+        SnackBar(content: Text('✅ 入库完成，新增 $newCount 张！AI 分析已加入后台队列')),
       );
 
-      // ── Phase 2：后台 AI 分析（不 await，立即解锁按钮）──────────
-      if (mounted) setState(() => _isAnalyzing = true);
-      scanner.analyzeUnanalyzedImages().then((_) {
-        if (mounted) setState(() => _isAnalyzing = false);
-      });
+      // ── Phase 2：调度 WorkManager 后台任务 ──────────────────────
+      // 任务在系统层运行，用户关闭 App 后继续分析
+      // 电量≥ 50% 才运行（在 callbackDispatcher 内部检查）
+      await BackgroundAiWorker.schedule();
 
     } catch (e) {
       if (mounted) {
