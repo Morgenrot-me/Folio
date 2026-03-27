@@ -23,13 +23,14 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen>
     with TickerProviderStateMixin {
-  bool _isScanning = false;
-  bool _isMatching = false;
+  bool _isScanning = false;   // Phase 1 入库中
+  bool _isMatching = false;   // 手动规则匹配中
+  bool _isAnalyzing = false;  // Phase 2 后台AI分析中
 
   /// 手机相册总张数（扫描开始瞬间由回调填入，固定不变）
   int? _libraryTotal;
-  /// 本次扫描已处理张数（每批 50 张更新一次）
-  int _scanProcessed = 0;
+  /// Phase 1 已入库张数（每批 100 张更新一次）
+  int _scanIndexed = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -54,8 +55,14 @@ class _HomeScreenState extends State<HomeScreen>
             children: [
               _buildActionCard(
                 context,
-                icon: _isScanning ? Icons.hourglass_top_rounded : Icons.sync_rounded,
-                label: _isScanning ? '扫描中...' : '特征扫描提取',
+                icon: _isScanning
+                    ? Icons.hourglass_top_rounded
+                    : Icons.sync_rounded,
+                label: _isScanning
+                    ? '入库中...'
+                    : _isAnalyzing
+                        ? 'AI分析中'
+                        : '特征扫描提取',
                 enabled: !_isScanning && !_isMatching,
                 onTap: _handleScan,
               ),
@@ -207,11 +214,12 @@ class _HomeScreenState extends State<HomeScreen>
           const SizedBox(height: 20),
 
           // ── 进度条 ────────────────────────────────────────────
+          // ── 进度条 ────────────────────────────────────────────
           if (_isScanning && _libraryTotal != null && _libraryTotal! > 0)
-            // 扫描进行中：显示实时扫描进度（每50张刷新一次）
+            // Phase 1 进行中：显示入库进度（每100张刷新）
             _buildScanProgress()
           else
-            // 非扫描状态：显示数据库 AI 分析完成比例
+            // 空闲或 Phase 2 AI 分析中：均使用 DB Stream 显示 AI 完成比例
             StreamBuilder<int>(
               stream: database.watchTotalImagesCount(),
               builder: (ctx, totalSnap) {
@@ -241,7 +249,9 @@ class _HomeScreenState extends State<HomeScreen>
                         const SizedBox(height: 6),
                         Text(
                           total > 0
-                              ? 'AI 分析完成 $analyzed / $total 张（$pct%）'
+                              ? (_isAnalyzing
+                                  ? 'AI 分析中... $analyzed / $total 张（$pct%）'
+                                  : 'AI 分析完成 $analyzed / $total 张（$pct%）')
                               : '尚未扫描，点击"特征扫描提取"开始',
                           style: const TextStyle(
                               color: Colors.white70,
@@ -259,11 +269,11 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// 扫描进行中的进度条组件（显示本批处理进度）
+  /// Phase 1 入库进度条组件
   Widget _buildScanProgress() {
     final total = _libraryTotal!;
-    final processed = _scanProcessed;
-    final progress = processed / total;
+    final indexed = _scanIndexed;
+    final progress = total > 0 ? indexed / total : 0.0;
     final pct = (progress * 100).toStringAsFixed(0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -280,7 +290,7 @@ class _HomeScreenState extends State<HomeScreen>
         ),
         const SizedBox(height: 6),
         Text(
-          '扫描进度 $processed / $total 张（$pct%）',
+          '快速入库 $indexed / $total 张（$pct%）',
           style: const TextStyle(
               color: Colors.white70,
               fontSize: 11,
@@ -347,8 +357,8 @@ class _HomeScreenState extends State<HomeScreen>
     if (_isScanning || _isMatching) return;
     setState(() {
       _isScanning = true;
-      _libraryTotal = null; // 重置，等待回调填入
-      _scanProcessed = 0;
+      _libraryTotal = null;
+      _scanIndexed = 0;
     });
 
     if (!mounted) return;
@@ -358,33 +368,43 @@ class _HomeScreenState extends State<HomeScreen>
 
     try {
       final scanner = context.read<MediaScannerService>();
-      final newCount = await scanner.scanAndIndexNewImages(
-        onProgress: (processed, total) {
+
+      // ── Phase 1：快速入库所有元数据 ─────────────────────────────
+      final newCount = await scanner.scanAndIndexMetadata(
+        onProgress: (indexed, total) {
           if (!mounted) return;
           setState(() {
-            _libraryTotal = total;    // 第一次回调时确定，后续不变
-            _scanProcessed = processed; // 每批50张更新一次
+            _libraryTotal = total;
+            _scanIndexed = indexed;
           });
-          // 第一次回调时（processed==0）更新 SnackBar 提示
-          if (processed == 0) {
+          if (indexed == 0) {
+            // 第一次回调：更新 SnackBar 显示总数
             ScaffoldMessenger.of(context).clearSnackBars();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('扫描中 (共 $total 张)...'),
-                duration: const Duration(hours: 1), // 扫描完成前一直显示
+                content: Text('快速入库中 (共 $total 张)...'),
+                duration: const Duration(hours: 1),
               ),
             );
           }
         },
       );
-      if (mounted) {
-        ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('🎉 扫描完成，新增 $newCount 张！已自动触发规则匹配')),
-        );
-      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('✅ 入库完成，新增 $newCount 张！AI 分析后台启动...')),
+      );
+
+      // ── Phase 2：后台 AI 分析（不 await，立即解锁按钮）──────────
+      if (mounted) setState(() => _isAnalyzing = true);
+      scanner.analyzeUnanalyzedImages().then((_) {
+        if (mounted) setState(() => _isAnalyzing = false);
+      });
+
     } catch (e) {
       if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('扫描失败，请检查相册权限: $e')),
         );
