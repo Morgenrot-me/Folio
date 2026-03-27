@@ -14,7 +14,12 @@ class Images extends Table {
   BlobColumn get semanticVector => blob()(); // 1000维 MobileNet ImageNet 概率向量 (BLOB float32x1000)
   BoolColumn get isScreenshot => boolean().withDefault(const Constant(false))();
   BoolColumn get hasText => boolean().withDefault(const Constant(false))();
-  TextColumn get tags => text().nullable()(); // 将张量解构出的 Top-6 可读英文标签，以逗号切割
+  /// v4: OCR提取的过滤后文字内容
+  ///   NULL  = 尚未执行 OCR（后台任务待处理）
+  ///   ''    = OCR已完成但无有效内容
+  ///   其他  = 过滤后的有效文字
+  TextColumn get ocrText => text().nullable()();
+  TextColumn get tags => text().nullable()(); // AI标签（逗号分隔，最多8个）
   RealColumn get blurScore => real()();
   RealColumn get dominantHue => real()();
   RealColumn get colorWarmth => real()();

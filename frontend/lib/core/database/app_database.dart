@@ -28,13 +28,12 @@ class AppDatabase extends _$AppDatabase {
         ));
 
   @override
-  int get schemaVersion => 3; // v3：新增 isAnalyzed 特征完成标志列
+  int get schemaVersion => 4; // v4：新增 ocrText 字段（后台静默 OCR 结果）
 
   @override
   MigrationStrategy get migration {
     return MigrationStrategy(
       beforeOpen: (details) async {
-        // 👇 SQLite 默认关闭外键约束，必须在每次连接时手动开启
         await customStatement('PRAGMA foreign_keys = ON');
       },
       onCreate: (Migrator m) async {
@@ -42,12 +41,14 @@ class AppDatabase extends _$AppDatabase {
       },
       onUpgrade: (Migrator m, int from, int to) async {
         if (from < 2) {
-          // v2：添加 tags 可读标签列
           await m.addColumn(images, images.tags);
         }
         if (from < 3) {
-          // v3：添加 isAnalyzed 特征完成标志列（默认 false，兼容旧记录）
           await m.addColumn(images, images.isAnalyzed);
+        }
+        if (from < 4) {
+          // v4：新增 OCR 文字字段（NULL = 待处理）
+          await m.addColumn(images, images.ocrText);
         }
       },
     );

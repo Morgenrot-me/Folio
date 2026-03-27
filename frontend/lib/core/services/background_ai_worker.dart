@@ -142,19 +142,51 @@ Future<bool> _runAiAnalysisTask() async {
       await Future.delayed(_kAnalysisDelay);
     }
 
-    // ── Step 5: 本批分析完毕，检查是否还有剩余（可能有新入库的）
+    // ── Step 5: 本批分析完毕，检查是否还有剩余
     final remaining = await (database.select(database.images)
           ..where((t) => t.isAnalyzed.equals(false)))
         .get();
 
     if (remaining.isNotEmpty) {
-      debugPrint('[BgWorker] 仍有 ${remaining.length} 张未完成，重新调度');
+      debugPrint('[BgWorker] 仍有 ${remaining.length} 张未完成 AI，重新调度');
       BackgroundAiWorker.schedule();
-    } else {
-      // 全部完成，触发规则匹配
-      await matcher.runMatchForAll();
-      debugPrint('[BgWorker] 全部分析完成，规则匹配已触发');
+      return true; // 先不跑 OCR，等下次 AI 完成后再说
     }
+
+    // ── Step 6: AI 全部完成，开始后台静默 OCR ──────────────────────────────
+    debugPrint('[BgWorker] AI 完成，开始后台 OCR 阶段');
+    final pendingOcr = await (database.select(database.images)
+          ..where((t) => t.ocrText.isNull()))
+        .get();
+
+    debugPrint('[BgWorker] OCR 待处理: ${pendingOcr.length} 张');
+
+    for (final image in pendingOcr) {
+      if (_isAnalysisCancelled) break;
+
+      // 每 10 张检查一次电量
+      if (pendingOcr.indexOf(image) % 10 == 0) {
+        final currentLevel = await battery.batteryLevel;
+        final currentState = await battery.batteryState;
+        final shouldPause = currentState != BatteryState.charging &&
+            (policy == BatteryPolicy.chargingOnly || currentLevel < threshold);
+        if (shouldPause) {
+          debugPrint('[BgWorker] OCR 阶段电量不足，暂停并重新调度');
+          BackgroundAiWorker.schedule(delayMinutes: 60);
+          return true;
+        }
+      }
+
+      try {
+        await extractor.extractOcrForImage(image.id, image.filePath);
+      } catch (e) {
+        debugPrint('[BgWorker] OCR 失败 ${image.fileName}: $e');
+      }
+    }
+
+    // ── Step 7: 全部完成，触发规则匹配
+    await matcher.runMatchForAll();
+    debugPrint('[BgWorker] OCR + 规则匹配全部完成');
 
     return true;
   } catch (e, stack) {
@@ -195,8 +227,8 @@ class BackgroundAiWorker {
       existingWorkPolicy: ExistingWorkPolicy.keep,
       initialDelay: Duration(minutes: delayMinutes),
       constraints: Constraints(
-        networkType: NetworkType.not_required, // 纯本地AI，不需要网络
-        requiresBatteryNotLow: true,           // 系统级低电量保护
+        networkType: NetworkType.notRequired, // 纯本地AI，不需要网络（0.9.x camelCase）
+        requiresBatteryNotLow: true,          // 系统级低电量保护
       ),
     );
     debugPrint('[BgWorker] 任务已调度，延迟: ${delayMinutes}分钟');
