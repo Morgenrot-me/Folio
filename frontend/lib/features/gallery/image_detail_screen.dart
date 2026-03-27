@@ -484,17 +484,14 @@ class _ImageViewPageState extends State<_ImageViewPage>
       imageWidget = Hero(tag: widget.heroTag!, child: imageWidget);
     }
 
-    return GestureDetector(
-      onTap: widget.onTap,
-      behavior: HitTestBehavior.opaque,
-      child: InteractiveViewer(
-        transformationController: _transformController,
-        onInteractionEnd: _onInteractionEnd,
-        panEnabled: _panEnabled, // ← 关键：未放大时禁用平移，让 PageView 接管手势
-        minScale: 0.5,
-        maxScale: 6.0,
-        child: imageWidget,
-      ),
+    // 单击由 Stack 的 translucent 遮罩层处理，此处直接返回 InteractiveViewer
+    return InteractiveViewer(
+      transformationController: _transformController,
+      onInteractionEnd: _onInteractionEnd,
+      panEnabled: _panEnabled,
+      minScale: 0.5,
+      maxScale: 6.0,
+      child: imageWidget,
     );
   }
 }
