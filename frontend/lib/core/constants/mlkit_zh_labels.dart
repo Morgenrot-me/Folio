@@ -486,7 +486,7 @@ class MlKitZhLabels {
     'Blue': '蓝色',
     'Green': '绿色',
     'Yellow': '黄色',
-    'Orange': '橙色',
+    'Orange (color)': '橙色',
     'Purple': '紫色',
     'Pink': '粉色',
     'White': '白色',
