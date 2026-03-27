@@ -21,9 +21,15 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with TickerProviderStateMixin {
   bool _isScanning = false;
   bool _isMatching = false;
+
+  /// 手机相册总张数（扫描开始瞬间由回调填入，固定不变）
+  int? _libraryTotal;
+  /// 本次扫描已处理张数（每批 50 张更新一次）
+  int _scanProcessed = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -147,7 +153,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        // 主色蓝深浅渐变，清爽统一
         gradient: LinearGradient(
           colors: [
             Theme.of(context).colorScheme.primary,
@@ -168,64 +173,120 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── 标题 ──────────────────────────────────────────────
           const Text(
-            '本地图像智能索引数量',
+            '本地相册总计',
             style: TextStyle(
                 color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
-          StreamBuilder<int>(
-            stream: database.watchTotalImagesCount(),
-            builder: (context, snapshot) {
-              final count = snapshot.data ?? 0;
+
+          // ── 大数字：手机相册总张数（扫描前后保持稳定）──────────
+          // 扫描前：从数据库读已入库数作为占位
+          // 扫描中/后：显示从手机相册获取的真实总数（_libraryTotal）
+          Builder(builder: (context) {
+            if (_libraryTotal != null) {
+              // 扫描已启动，显示手机相册真实总量
               return Text(
-                '$count 张',
+                '$_libraryTotal 张',
                 style: const TextStyle(
                     color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800),
               );
-            },
-          ),
+            }
+            // 扫描尚未启动，显示数据库现有数量
+            return StreamBuilder<int>(
+              stream: database.watchTotalImagesCount(),
+              builder: (ctx, snap) => Text(
+                '${snap.data ?? 0} 张',
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800),
+              ),
+            );
+          }),
+
           const SizedBox(height: 20),
-          StreamBuilder<int>(
-            stream: database.watchTotalImagesCount(),
-            builder: (context, totalSnap) {
-              final total = totalSnap.data ?? 0;
-              return StreamBuilder<int>(
-                stream: database.watchAnalyzedImagesCount(),
-                builder: (context, analyzedSnap) {
-                  final analyzed = analyzedSnap.data ?? 0;
-                  final progress = total > 0 ? analyzed / total : 0.0;
-                  final pct = total > 0 ? (progress * 100).toStringAsFixed(0) : '—';
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ClipRRect(
-                        borderRadius: const BorderRadius.all(Radius.circular(8)),
-                        child: LinearProgressIndicator(
-                          value: progress,
-                          backgroundColor: Colors.white24,
-                          valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                          minHeight: 8,
+
+          // ── 进度条 ────────────────────────────────────────────
+          if (_isScanning && _libraryTotal != null && _libraryTotal! > 0)
+            // 扫描进行中：显示实时扫描进度（每50张刷新一次）
+            _buildScanProgress()
+          else
+            // 非扫描状态：显示数据库 AI 分析完成比例
+            StreamBuilder<int>(
+              stream: database.watchTotalImagesCount(),
+              builder: (ctx, totalSnap) {
+                final total = totalSnap.data ?? 0;
+                return StreamBuilder<int>(
+                  stream: database.watchAnalyzedImagesCount(),
+                  builder: (ctx, analyzedSnap) {
+                    final analyzed = analyzedSnap.data ?? 0;
+                    final progress = total > 0 ? analyzed / total : 0.0;
+                    final pct = total > 0
+                        ? (progress * 100).toStringAsFixed(0)
+                        : '—';
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius:
+                              const BorderRadius.all(Radius.circular(8)),
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            backgroundColor: Colors.white24,
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                                Colors.white),
+                            minHeight: 8,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        total > 0
-                            ? 'AI 分析完成 $analyzed / $total 张（$pct%）'
-                            : '尚未扫描，点击"特征扫描提取"开始',
-                        style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500),
-                      ),
-                    ],
-                  );
-                },
-              );
-            },
-          ),
+                        const SizedBox(height: 6),
+                        Text(
+                          total > 0
+                              ? 'AI 分析完成 $analyzed / $total 张（$pct%）'
+                              : '尚未扫描，点击"特征扫描提取"开始',
+                          style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
         ],
       ),
+    );
+  }
+
+  /// 扫描进行中的进度条组件（显示本批处理进度）
+  Widget _buildScanProgress() {
+    final total = _libraryTotal!;
+    final processed = _scanProcessed;
+    final progress = processed / total;
+    final pct = (progress * 100).toStringAsFixed(0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: const BorderRadius.all(Radius.circular(8)),
+          child: LinearProgressIndicator(
+            value: progress,
+            backgroundColor: Colors.white24,
+            valueColor:
+                const AlwaysStoppedAnimation<Color>(Colors.white),
+            minHeight: 8,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '扫描进度 $processed / $total 张（$pct%）',
+          style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 11,
+              fontWeight: FontWeight.w500),
+        ),
+      ],
     );
   }
 
@@ -284,16 +345,38 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _handleScan() async {
     if (_isScanning || _isMatching) return;
-    setState(() => _isScanning = true);
+    setState(() {
+      _isScanning = true;
+      _libraryTotal = null; // 重置，等待回调填入
+      _scanProcessed = 0;
+    });
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已启动本地相册特征扫描...')),
+      const SnackBar(content: Text('正在读取相册总数...')),
     );
 
     try {
       final scanner = context.read<MediaScannerService>();
-      final newCount = await scanner.scanAndIndexNewImages();
+      final newCount = await scanner.scanAndIndexNewImages(
+        onProgress: (processed, total) {
+          if (!mounted) return;
+          setState(() {
+            _libraryTotal = total;    // 第一次回调时确定，后续不变
+            _scanProcessed = processed; // 每批50张更新一次
+          });
+          // 第一次回调时（processed==0）更新 SnackBar 提示
+          if (processed == 0) {
+            ScaffoldMessenger.of(context).clearSnackBars();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('扫描中 (共 $total 张)...'),
+                duration: const Duration(hours: 1), // 扫描完成前一直显示
+              ),
+            );
+          }
+        },
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(

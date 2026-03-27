@@ -32,10 +32,16 @@ class MediaScannerService {
 
   /// 完整扫描流程：
   ///   1. 获取所有相册中的图片（isAll 虚拟总相册）
-  ///   2. 分页处理：新图片落库+特征提取，未分析图片补跑
-  ///   3. 扫描完成后触发智能规则匹配
-  ///   返回：本次新入库的图片数量
-  Future<int> scanAndIndexNewImages() async {
+  ///   2. **立即**通过 onProgress 汇报手机相册总张数（totalInLibrary）
+  ///   3. 分页处理：新图片落库+特征提取，未分析图片补跑
+  ///   4. 扫描完成后触发智能规则匹配
+  ///
+  /// [onProgress] 回调参数说明：
+  ///   processed — 本次扫描已处理的张数（入库或跳过）
+  ///   total     — 手机相册中的总张数（固定值，第一次回调即确定）
+  Future<int> scanAndIndexNewImages({
+    void Function(int processed, int total)? onProgress,
+  }) async {
     _isCancelled = false;
 
     final PermissionState ps = await PhotoManager.requestPermissionExtend();
@@ -43,19 +49,23 @@ class MediaScannerService {
       throw Exception('未获得相册访问权限，请在系统设置中授权');
     }
 
-    // 修复：使用 isAll=true 的虚拟总相册，包含截图/Downloads/所有App图片
+    // 使用 isAll=true 的虚拟总相册，包含截图/Downloads/所有App图片
     final paths = await PhotoManager.getAssetPathList(type: RequestType.image);
     if (paths.isEmpty) return 0;
 
-    // 优先找"全部照片"虚拟相册（isAll=true），回退到第一个
     final AssetPathEntity allPath =
         paths.firstWhere((p) => p.isAll, orElse: () => paths.first);
 
     final int totalCount = await allPath.assetCountAsync;
     debugPrint('MediaScanner: 发现 $totalCount 张图片（相册: ${allPath.name}）');
 
+    // ★ 关键：在任何入库之前，先把手机相册总张数回调给 UI
+    //   这样 HomeScreen 顶部大数字在扫描开始瞬间就能显示完整总量
+    onProgress?.call(0, totalCount);
+
     int newCount = 0;
     int page = 0;
+    int processed = 0;
 
     while (!_isCancelled) {
       final int start = page * _kPageSize;
@@ -71,8 +81,11 @@ class MediaScannerService {
         if (_isCancelled) break;
         final isNew = await _processAndSaveAsset(entity);
         if (isNew) newCount++;
+        processed++;
       }
 
+      // 每处理完一批（50张）更新进度
+      onProgress?.call(processed, totalCount);
       page++;
     }
 
@@ -84,6 +97,7 @@ class MediaScannerService {
 
     return newCount;
   }
+
 
   /// 处理单张资产：新图片落库+分析，已有未分析图片补分析
   Future<bool> _processAndSaveAsset(AssetEntity entity) async {
