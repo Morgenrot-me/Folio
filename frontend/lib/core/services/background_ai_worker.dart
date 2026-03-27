@@ -197,8 +197,8 @@ class BackgroundAiWorker {
       constraints: Constraints(
         // 系统级低电量保护（约 <15-20% 时暂停）
         requiresBatteryNotLow: true,
-        // 显式不要求网络（本地 AI，完全离线）
-        requiresNetworkConnectivity: false,
+        // workmanager 0.5.2 不支持 requiresNetworkConnectivity 参数
+        // 默认行为即不要求网络，本地 AI 完全离线运行
       ),
     );
     debugPrint('[BgWorker] 任务已调度，延迟: ${delayMinutes}分钟');
