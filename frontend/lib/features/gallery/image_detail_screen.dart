@@ -112,7 +112,7 @@ class _ImageDetailScreenState extends State<ImageDetailScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // ── 1. PageView：左右滑动切换 ──────────────────────────────────────
+          // ── 1. PageView：左右滑动切换 ──────────────────────────────────
           PageView.builder(
             controller: _pageController,
             itemCount: widget.images.length,
@@ -123,72 +123,87 @@ class _ImageDetailScreenState extends State<ImageDetailScreen>
               return _ImageViewPage(
                 image: image,
                 heroTag: (isFirst && widget.heroTag != null) ? widget.heroTag : null,
-                onTap: _handleMainTap,
               );
             },
           ),
 
-          // ── 2. 顶部渐变栏（可隐藏）─────────────────────────────────────────
-          AnimatedOpacity(
-            opacity: _showChrome ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 200),
+          // ── 2. 透明单击监听层（不阻止 PageView drag 和 InteractiveViewer scale）
+          // behavior: translucent 确保此层不绿断手势，仅 TapGestureRecognizer 参与竞争。
+          // 竞争规则：单击(无移动) → TapRecognizer 赢；左右滑(水平移动) → PageView 赢；捆合 → InteractiveViewer 赢
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: _handleMainTap,
+              behavior: HitTestBehavior.translucent,
+              child: const SizedBox.expand(),
+            ),
+          ),
+
+          // ── 3. 顶部渐变栏（Positioned 定位到顶部，不再被 StackFit.expand 拉满全屏） ────
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
             child: IgnorePointer(
               ignoring: !_showChrome,
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    // 加深渐变，防止图标在浅色图片上看不清
-                    colors: [
-                      Color(0xCC000000), // 约 80% 不透明黑
-                      Color(0x44000000), // 约 27%
-                      Colors.transparent,
-                    ],
-                    stops: [0.0, 0.55, 1.0],
+              child: AnimatedOpacity(
+                opacity: _showChrome ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xCC000000), // ~80% 黑
+                        Color(0x44000000), // ~27%
+                        Colors.transparent,
+                      ],
+                      stops: [0.0, 0.55, 1.0],
+                    ),
                   ),
-                ),
-                child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                              color: Colors.white),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                        Expanded(
-                          child: Text(
-                            _currentImage.fileName,
-                            style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                                overflow: TextOverflow.ellipsis),
+                  child: SafeArea(
+                    bottom: false, // 顶部栏不需要底部安全边距
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                                color: Colors.white),
+                            onPressed: () => Navigator.pop(context),
                           ),
-                        ),
-                        // 当前位置指示（如第 3/20 张）
-                        if (widget.images.length > 1)
-                          Text(
-                            '${_currentIndex + 1} / ${widget.images.length}',
-                            style: const TextStyle(
-                                color: Colors.white54, fontSize: 13),
-                          ),
-                        const SizedBox(width: 4),
-                        // ⓘ 信息按钮
-                        IconButton(
-                          icon: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 200),
-                            child: Icon(
-                              _showInfo ? Icons.info_rounded : Icons.info_outline_rounded,
-                              key: ValueKey(_showInfo),
-                              color: _showInfo ? Colors.white : Colors.white70,
+                          Expanded(
+                            child: Text(
+                              _currentImage.fileName,
+                              style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                  overflow: TextOverflow.ellipsis),
                             ),
                           ),
-                          tooltip: '图片信息',
-                          onPressed: _toggleInfo,
-                        ),
-                      ],
+                          if (widget.images.length > 1)
+                            Text(
+                              '${_currentIndex + 1} / ${widget.images.length}',
+                              style: const TextStyle(
+                                  color: Colors.white54, fontSize: 13),
+                            ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              child: Icon(
+                                _showInfo
+                                    ? Icons.info_rounded
+                                    : Icons.info_outline_rounded,
+                                key: ValueKey(_showInfo),
+                                color: _showInfo ? Colors.white : Colors.white70,
+                              ),
+                            ),
+                            tooltip: '图片信息',
+                            onPressed: _toggleInfo,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -196,7 +211,7 @@ class _ImageDetailScreenState extends State<ImageDetailScreen>
             ),
           ),
 
-          // ── 3. 信息面板（磨砂玻璃，可固定）────────────────────────────────
+          // ── 4. 底部信息面板（磁玉玻璃，可固定） ──────────────────────
           if (_showInfo)
             Positioned(
               bottom: 0,
@@ -383,11 +398,9 @@ class _ImageDetailScreenState extends State<ImageDetailScreen>
 class _ImageViewPage extends StatefulWidget {
   final db.Image image;
   final Object? heroTag;
-  final VoidCallback onTap;
 
   const _ImageViewPage({
     required this.image,
-    required this.onTap,
     this.heroTag,
   });
 
@@ -401,8 +414,9 @@ class _ImageViewPageState extends State<_ImageViewPage>
   late AnimationController _snapController;
   Animation<Matrix4>? _snapAnimation;
 
-  /// scale > 1.0 时开启（让 InteractiveViewer 接管平移）；
-  /// scale <= 1.0 时关闭（把水平手势还给 PageView，让翻页正常工作）
+  /// 实时监听缩放比例，动态控制 panEnabled。
+  /// scale ≤ 1.01 → panEnabled=false，PageView 接管水平翻页手势
+  /// scale >  1.01 → panEnabled=true，InteractiveViewer 接管图内平移
   bool _panEnabled = false;
 
   @override
@@ -461,8 +475,8 @@ class _ImageViewPageState extends State<_ImageViewPage>
             child: CircularProgressIndicator(color: Colors.white));
       },
       errorBuilder: (ctx, err, stack) => const Center(
-        child:
-            Icon(Icons.broken_image_outlined, size: 72, color: Colors.white30),
+        child: Icon(Icons.broken_image_outlined,
+            size: 72, color: Colors.white30),
       ),
     );
 
