@@ -2,27 +2,15 @@
 convert_mobileclip.py
 MobileCLIP（Apple）图像编码器 PyTorch → ONNX → TFLite 转换脚本。
 
-只导出 图像编码器（Vision Encoder），输出 512 维语义向量，
-用于图片相似度搜索和零样本分类。文本编码器在移动端不需要。
-
-支持模型规格：
-  S0 ~ 11M 图像编码器参数，推荐首选（最小最快）
-  S1 ~ 25M
-  S2 ~ 35M
+只导出 图像编码器（Vision Encoder），输出 512 维语义向量。
+✅ 不依赖 mobileclip 包，直接使用 open_clip_torch（已安装）加载模型。
 
 依赖安装：
-  pip install torch torchvision onnx onnx2tf sng4onnx
-  pip install open_clip_torch timm            # MobileCLIP base 依赖
-  pip install git+https://github.com/apple/ml-mobileclip.git
-
-权重下载（官方提供）：
-  MobileCLIP-S0: https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/mobileclip_s0.pt
-  MobileCLIP-S1: https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/mobileclip_s1.pt
-  MobileCLIP-S2: https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/mobileclip_s2.pt
+  pip install torch torchvision onnx onnx2tf sng4onnx --no-deps
+  （open_clip_torch 和 timm 已经安装好了）
 
 使用方式：
   python scripts\\convert_mobileclip.py --model S0
-  python scripts\\convert_mobileclip.py --model S1   # 更高精度
 
 完成后复制到 frontend/assets/models/：
   scripts/mobileclip_s0_vision.tflite
@@ -48,25 +36,15 @@ if not hasattr(onnx.helper, 'float32_to_bfloat16'):
 
 import onnx2tf
 
-# =============================================================================
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# 官方权重直链（Apple CDN）
+# 权重直链（Apple 官方 CDN，若超时可手动下载后放到 scripts/ 目录）
 _WEIGHT_URLS = {
     'S0': 'https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/mobileclip_s0.pt',
     'S1': 'https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/mobileclip_s1.pt',
     'S2': 'https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/mobileclip_s2.pt',
     'B':  'https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/mobileclip_b.pt',
 }
-
-# MobileCLIP 配置名称（对应 open_clip 中注册的名字）
-_CLIP_NAMES = {
-    'S0': 'mobileclip_s0',
-    'S1': 'mobileclip_s1',
-    'S2': 'mobileclip_s2',
-    'B':  'mobileclip_b',
-}
-
 # =============================================================================
 def parse_args():
     p = argparse.ArgumentParser()
@@ -98,51 +76,46 @@ def download_weights(model: str) -> str:
 def load_vision_encoder(model: str, weights_path: str, input_size: int):
     """
     加载 MobileCLIP 并提取图像编码器（Vision Encoder）。
-    返回封装好的纯图像编码模块。
+    直接使用 open_clip_torch，不需要单独安装 mobileclip 包。
     """
+    import open_clip
+
+    clip_name = f'mobileclip_{model.lower()}'
+    print(f'[2/4] 用 open_clip 加载 MobileCLIP-{model}（{clip_name}）...')
+
+    # open_clip_torch >= 2.24 已内置 MobileCLIP 注册
     try:
-        import mobileclip
-    except ImportError:
-        print('[ERROR] 请先安装 MobileCLIP：')
-        print('  pip install git+https://github.com/apple/ml-mobileclip.git')
+        clip_model, _, _ = open_clip.create_model_and_transforms(
+            clip_name,
+            pretrained=weights_path,
+        )
+    except Exception as e:
+        print(f'\n[ERROR] open_clip 加载失败：{e}')
+        print('请确认 open_clip_torch 版本 >= 2.24：')
+        print('  pip install -U open_clip_torch')
         sys.exit(1)
 
-    clip_name = _CLIP_NAMES[model]
-    print(f'[2/4] 加载 MobileCLIP-{model}（{clip_name}）...')
-
-    # MobileCLIP 通过 open_clip 接口加载
-    import open_clip
-    clip_model, _, preprocess = open_clip.create_model_and_transforms(
-        clip_name,
-        pretrained=weights_path,
-    )
     clip_model.eval()
-
-    # 只要图像编码器（visual）
     vision = clip_model.visual
     vision.eval()
 
-    # 封装：normalize + encode
     class VisionOnlyModel(torch.nn.Module):
         """
         纯图像编码器包装。
-        输入：[B, 3, H, W]，像素值范围 [0, 1]，已做 ImageNet 归一化
-        输出：[B, 512]，L2 归一化后的语义向量
+        输入：[1, 3, H, W]，像素值范围 [0, 1]，ImageNet 归一化
+        输出：[1, 512]，L2 归一化语义向量
         """
         def __init__(self, visual):
             super().__init__()
             self.visual = visual
 
         def forward(self, x):
-            features = self.visual(x)
-            # L2 归一化（与 open_clip 保持一致）
-            features = features / features.norm(dim=-1, keepdim=True).clamp(min=1e-6)
-            return features
+            feat = self.visual(x)
+            return feat / feat.norm(dim=-1, keepdim=True).clamp(min=1e-6)
 
     model_wrapped = VisionOnlyModel(vision)
     model_wrapped.eval()
 
-    # 输出维度
     with torch.no_grad():
         dummy = torch.randn(1, 3, input_size, input_size)
         out = model_wrapped(dummy)
