@@ -5,15 +5,20 @@ MobileCLIP（Apple）图像编码器 PyTorch → ONNX → TFLite 转换脚本。
 只导出 图像编码器（Vision Encoder），输出 512 维语义向量。
 ✅ 不依赖 mobileclip 包，直接使用 open_clip_torch（已安装）加载模型。
 
+支持规格（open_clip_torch 3.3 内置）：
+  S1  ~ 25M 参数，推荐（S0 在 open_clip 中不可用）
+  S2  ~ 35M 参数，精度更高
+  B   最大版本
+
 依赖安装：
-  pip install torch torchvision onnx onnx2tf sng4onnx --no-deps
-  （open_clip_torch 和 timm 已经安装好了）
+  pip install onnx2tf sng4onnx --no-deps
+  （torch / torchvision / onnx / open_clip_torch / timm 已安装）
 
 使用方式：
-  python scripts\\convert_mobileclip.py --model S0
+  python scripts\\convert_mobileclip.py --model S1
 
 完成后复制到 frontend/assets/models/：
-  scripts/mobileclip_s0_vision.tflite
+  scripts/mobileclip_s1_vision.tflite
 """
 
 import os
@@ -39,17 +44,24 @@ import onnx2tf
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # 权重直链（Apple 官方 CDN，若超时可手动下载后放到 scripts/ 目录）
+# 注：S0 未在 open_clip 中注册，从 S1 开始
 _WEIGHT_URLS = {
-    'S0': 'https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/mobileclip_s0.pt',
     'S1': 'https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/mobileclip_s1.pt',
     'S2': 'https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/mobileclip_s2.pt',
     'B':  'https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/mobileclip_b.pt',
 }
+
+# open_clip 中注册的模型名（与 open_clip.list_models() 一致）
+_CLIP_NAMES = {
+    'S1': 'MobileCLIP-S1',
+    'S2': 'MobileCLIP-S2',
+    'B':  'MobileCLIP-B',
+}
 # =============================================================================
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument('--model', default='S0', choices=['S0', 'S1', 'S2', 'B'],
-                   help='MobileCLIP 规格（S0=最小最快，S2=精度最高，默认 S0）')
+    p.add_argument('--model', default='S1', choices=['S1', 'S2', 'B'],
+                   help='MobileCLIP 规格（S1=推荐，S2=更高精度，B=最大，默认 S1）')
     p.add_argument('--input-size', type=int, default=256,
                    help='输入分辨率（MobileCLIP 原始使用 256x256）')
     return p.parse_args()
@@ -80,8 +92,8 @@ def load_vision_encoder(model: str, weights_path: str, input_size: int):
     """
     import open_clip
 
-    clip_name = f'mobileclip_{model.lower()}'
-    print(f'[2/4] 用 open_clip 加载 MobileCLIP-{model}（{clip_name}）...')
+    clip_name = _CLIP_NAMES[model]
+    print(f'[2/4] 用 open_clip 加载 {clip_name}...')
 
     # open_clip_torch >= 2.24 已内置 MobileCLIP 注册
     try:
