@@ -16,6 +16,7 @@ import 'dart:typed_data';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart'; // WidgetsFlutterBinding
 import 'package:workmanager/workmanager.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -50,6 +51,13 @@ bool _workerCancelled = false;
 /// 必须为顶层函数（不能是类的静态方法）。
 @pragma('vm:entry-point')
 void callbackDispatcher() {
+  // ★★★ 关键：WorkManager 回调运行在独立 Isolate 中
+  // 必须在此处初始化 Flutter 绑定，否则：
+  //   - rootBundle 无法加载模型文件（assets 不可访问）
+  //   - TFLite / ML Kit 插件 Channel 未注册 → 推理失败
+  WidgetsFlutterBinding.ensureInitialized();
+  // workmanager 0.9.x 自动注册所有插件，无需手动调用 DartPluginRegistrant
+
   Workmanager().executeTask((taskName, inputData) async {
     debugPrint('[BgWorker] 任务触发: $taskName');
 

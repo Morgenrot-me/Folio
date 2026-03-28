@@ -10,7 +10,9 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../../core/database/app_database.dart' as db;
+import '../../core/services/feature_extractor_service.dart';
 
 class ImageDetailScreen extends StatefulWidget {
   final List<db.Image> images;
@@ -34,9 +36,10 @@ class _ImageDetailScreenState extends State<ImageDetailScreen>
   late PageController _pageController;
   late int _currentIndex;
 
-  bool _showChrome = true; // 顶底栏是否可见
+  bool _showChrome = true;
   bool _showInfo = false;
   bool _isPinned = false;
+  bool _isAnalyzingCurrent = false; // 当前图片是否正在前台 AI 分析中
 
   late AnimationController _panelController;
   late Animation<Offset> _panelSlide;
@@ -60,6 +63,11 @@ class _ImageDetailScreenState extends State<ImageDetailScreen>
       begin: const Offset(0, 1),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _panelController, curve: Curves.easeOutCubic));
+
+    // 进入详情页时，若当前图片尚未 AI 分析，立即触发
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _triggerAnalysisIfNeeded(_currentImage);
+    });
   }
 
   @override
@@ -72,7 +80,25 @@ class _ImageDetailScreenState extends State<ImageDetailScreen>
 
   void _onPageChanged(int index) {
     setState(() => _currentIndex = index);
-    // 信息面板内容随页面自动更新，无需额外操作
+    // 翻到新图片时，若未分析则立即触发
+    _triggerAnalysisIfNeeded(widget.images[index]);
+  }
+
+  /// 若图片尚未 AI 分析，立即在前台触发（不等 WorkManager）
+  Future<void> _triggerAnalysisIfNeeded(db.Image image) async {
+    if (image.isAnalyzed) return;
+    if (_isAnalyzingCurrent) return;
+    if (!mounted) return;
+
+    setState(() => _isAnalyzingCurrent = true);
+    try {
+      final extractor = context.read<FeatureExtractorService>();
+      await extractor.extractFeaturesForImage(image.id, image.filePath);
+    } catch (e) {
+      debugPrint('[Detail] 按需分析失败: $e');
+    } finally {
+      if (mounted) setState(() => _isAnalyzingCurrent = false);
+    }
   }
 
   void _handleMainTap() {
@@ -173,12 +199,34 @@ class _ImageDetailScreenState extends State<ImageDetailScreen>
                             onPressed: () => Navigator.pop(context),
                           ),
                           Expanded(
-                            child: Text(
-                              _currentImage.fileName,
-                              style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 14,
-                                  overflow: TextOverflow.ellipsis),
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    _currentImage.fileName,
+                                    style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 14,
+                                        overflow: TextOverflow.ellipsis),
+                                  ),
+                                ),
+                                // AI 分析中角标
+                                if (_isAnalyzingCurrent) ...[
+                                  const SizedBox(width: 6),
+                                  const SizedBox(
+                                    width: 13, height: 13,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 1.5,
+                                      color: Colors.white54,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Text('AI 分析中',
+                                      style: TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 11)),
+                                ],
+                              ],
                             ),
                           ),
                           if (widget.images.length > 1)
