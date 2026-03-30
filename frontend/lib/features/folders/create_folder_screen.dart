@@ -1,15 +1,41 @@
 // create_folder_screen.dart
-// 创建智能过滤文件夹：根据截图/文字检出/清晰度规则创建规则树并落库。
-// 修复：
-//   - 创建成功后通过 SnackBar 给出明确反馈再 pop
-//   - withOpacity → withValues
-//   - 清晰度 Slider 改用"%" 标注，UI 描述改为用户语言
+// 创建智能过滤文件夹，支持以下规则组合：
+//   - 截图/文字/清晰度 基础规则
+//   - AI 语义标签（SEMANTIC_LABEL）多选筛选，支持场景+内容两大类
+// 规则结构：
+//   AND（根）
+//   ├── IS_SCREENSHOT / HAS_TEXT / BLUR_SCORE（可选）
+//   └── OR（AI 标签组，若用户至少选了一个标签）
+//       ├── SEMANTIC_LABEL CONTAINS "海边"
+//       └── SEMANTIC_LABEL CONTAINS "海滩"
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drift/drift.dart' as drift;
 import 'package:uuid/uuid.dart';
 import '../../core/database/app_database.dart';
+
+// ── 预设 AI 标签分组 ──────────────────────────────────────────────────────────
+
+/// 场景类标签（主要来自 Places365）
+const _kSceneTags = [
+  '海边', '海滩', '海岸', '山', '雪山', '森林', '峡谷', '沙漠',
+  '街道', '广场', '公园', '桥梁', '港口', '机场',
+  '餐厅', '咖啡厅', '酒吧', '超市', '商场', '图书馆',
+  '卧室', '客厅', '厨房', '浴室', '办公室', '教室',
+  '操场', '游泳池', '体育馆', '海滨别墅',
+];
+
+/// 内容/物体类标签（主要来自 ML Kit）
+const _kContentTags = [
+  '人物', '自拍', '孩子', '人群',
+  '狗', '猫', '鸟', '动物',
+  '食物', '水果', '蔬菜', '甜品', '饮料',
+  '汽车', '摩托车', '自行车',
+  '花卉', '树木', '植物',
+  '建筑', '天空', '日落',
+  '运动', '舞蹈', '表演',
+];
 
 class CreateFolderScreen extends StatefulWidget {
   const CreateFolderScreen({super.key});
@@ -29,6 +55,9 @@ class _CreateFolderScreenState extends State<CreateFolderScreen> {
   /// 清晰度要求百分比（0 = 不限，100 = 仅最清晰）
   /// 存库时还原为实际拉普拉斯阈值（百分比 × 100，粗略映射）
   double _sharpnessPct = 0.0;
+
+  /// 当前已选中的 AI 语义标签集合
+  final Set<String> _selectedTags = {};
 
   String _generateId() => _uuid.v4();
 
@@ -55,13 +84,14 @@ class _CreateFolderScreenState extends State<CreateFolderScreen> {
 
       final List<FolderRulesCompanion> rules = [];
 
-      // Root AND 节点
+      // ── Root AND 节点 ────────────────────────────────────────────────────
       rules.add(FolderRulesCompanion.insert(
         id: rootRuleId,
         folderId: folderId,
         nodeType: 'AND',
       ));
 
+      // ── 基础规则：截图排除 ───────────────────────────────────────────────
       if (_excludeScreenshots) {
         rules.add(FolderRulesCompanion.insert(
           id: _generateId(),
@@ -74,6 +104,7 @@ class _CreateFolderScreenState extends State<CreateFolderScreen> {
         ));
       }
 
+      // ── 基础规则：含文字 ─────────────────────────────────────────────────
       if (_requireText) {
         rules.add(FolderRulesCompanion.insert(
           id: _generateId(),
@@ -86,7 +117,7 @@ class _CreateFolderScreenState extends State<CreateFolderScreen> {
         ));
       }
 
-      // 将百分比映射到实际拉普拉斯阈值（×100 粗略对应）
+      // ── 基础规则：清晰度 ─────────────────────────────────────────────────
       final blurThreshold = _sharpnessPct * 100;
       if (blurThreshold > 0) {
         rules.add(FolderRulesCompanion.insert(
@@ -98,6 +129,29 @@ class _CreateFolderScreenState extends State<CreateFolderScreen> {
           comparator: const drift.Value('>'),
           value: drift.Value(blurThreshold.toStringAsFixed(1)),
         ));
+      }
+
+      // ── AI 语义标签规则：OR 节点 + SEMANTIC_LABEL LEAF ──────────────────
+      // 若用户至少选了一个标签，挂一个 OR 节点，每个标签对应一个 LEAF
+      if (_selectedTags.isNotEmpty) {
+        final orNodeId = _generateId();
+        rules.add(FolderRulesCompanion.insert(
+          id: orNodeId,
+          folderId: folderId,
+          parentId: drift.Value(rootRuleId),
+          nodeType: 'OR',
+        ));
+        for (final tag in _selectedTags) {
+          rules.add(FolderRulesCompanion.insert(
+            id: _generateId(),
+            folderId: folderId,
+            parentId: drift.Value(orNodeId),
+            nodeType: 'LEAF',
+            featureType: const drift.Value('SEMANTIC_LABEL'),
+            comparator: const drift.Value('CONTAINS'),
+            value: drift.Value(tag),
+          ));
+        }
       }
 
       await db.transaction(() async {
@@ -119,7 +173,6 @@ class _CreateFolderScreenState extends State<CreateFolderScreen> {
       });
 
       if (mounted) {
-        // 先展示成功反馈再返回
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('✅ 「${_nameController.text.trim()}」已创建')),
         );
@@ -272,8 +325,145 @@ class _CreateFolderScreenState extends State<CreateFolderScreen> {
               ],
             ),
           ),
+
+          const SizedBox(height: 24),
+
+          // ── AI 语义标签筛选 ──────────────────────────────────────────────
+          _buildTagSection(context),
         ],
       ),
+    );
+  }
+
+  /// AI 语义标签选择区块（场景类 + 内容类，多选 FilterChip）
+  Widget _buildTagSection(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final surface = Theme.of(context).colorScheme.surfaceContainerHighest;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: surface.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 标题行：标签计数徽章
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('AI 标签筛选', style: TextStyle(fontWeight: FontWeight.w500)),
+              if (_selectedTags.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: primary,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '已选 ${_selectedTags.length} 个',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onPrimary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '选中后，图片 AI 标签含任一选中词则匹配（OR 逻辑）',
+            style: TextStyle(fontSize: 11, color: onSurface.withValues(alpha: 0.5)),
+          ),
+          const SizedBox(height: 16),
+
+          // 场景类标签
+          Text('场景',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: primary)),
+          const SizedBox(height: 8),
+          _buildChipGroup(_kSceneTags),
+
+          const SizedBox(height: 16),
+
+          // 内容/物体类标签
+          Text('内容与物体',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: primary)),
+          const SizedBox(height: 8),
+          _buildChipGroup(_kContentTags),
+
+          // 清空按钮（有选中时显示）
+          if (_selectedTags.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => setState(() => _selectedTags.clear()),
+                icon: const Icon(Icons.clear_all_rounded, size: 16),
+                label: const Text('清空'),
+                style: TextButton.styleFrom(
+                  foregroundColor: onSurface.withValues(alpha: 0.5),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 渲染一组标签的 FilterChip 流式布局
+  Widget _buildChipGroup(List<String> tags) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: tags.map((tag) {
+        final selected = _selectedTags.contains(tag);
+        return FilterChip(
+          label: Text(tag),
+          selected: selected,
+          onSelected: (val) {
+            setState(() {
+              if (val) {
+                _selectedTags.add(tag);
+              } else {
+                _selectedTags.remove(tag);
+              }
+            });
+          },
+          selectedColor:
+              Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+          checkmarkColor: Theme.of(context).colorScheme.primary,
+          labelStyle: TextStyle(
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+            color: selected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75),
+          ),
+          side: BorderSide(
+            color: selected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.outline.withValues(alpha: 0.4),
+            width: selected ? 1.5 : 1.0,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          showCheckmark: true,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        );
+      }).toList(),
     );
   }
 }

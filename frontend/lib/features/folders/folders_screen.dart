@@ -1,12 +1,13 @@
 // folders_screen.dart
-// 智能分类文件夹页：展示所有智能过滤文件夹，支持重匹配触发、图片数量显示、删除等操作。
+// 智能分类文件夹页：展示所有智能过滤文件夹，支持重匹配触发、图片数量显示、重命名、删除等操作。
 // 改善：
 //   - 文件夹卡片实时显示已匹配图片数量（来自 watchFolderImageCounts()）
 //   - AppBar 添加"重新匹配"按钮，手动触发 SmartFolderMatcherService
-//   - 添加"清理孤儿"按钮（长按可触发 cleanOrphanedImages）
+//   - 文件夹重命名：弹出 TextField 对话框，直接更新数据库
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:drift/drift.dart' show Value;
 import '../../core/database/app_database.dart' hide Image;
 import '../../core/services/smart_folder_matcher_service.dart';
 import '../../core/services/media_scanner_service.dart';
@@ -265,9 +266,7 @@ class _FoldersScreenState extends State<FoldersScreen> {
               title: const Text('重命名'),
               onTap: () {
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('重命名功能开发中')),
-                );
+                _renameFolder(context, folder);
               },
             ),
             ListTile(
@@ -285,6 +284,53 @@ class _FoldersScreenState extends State<FoldersScreen> {
         ),
       ),
     );
+  }
+
+  /// 弹出对话框编辑文件夹名称并写库
+  void _renameFolder(BuildContext context, SmartFolder folder) {
+    final controller = TextEditingController(text: folder.name);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('重命名'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: '请输入新名称',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (_) => _doRename(context, ctx, folder, controller),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => _doRename(context, ctx, folder, controller),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _doRename(
+    BuildContext pageContext,
+    BuildContext dialogContext,
+    SmartFolder folder,
+    TextEditingController controller,
+  ) async {
+    final newName = controller.text.trim();
+    if (newName.isEmpty) return;
+    Navigator.pop(dialogContext);
+    final db = pageContext.read<AppDatabase>();
+    await (db.update(db.smartFolders)..where((t) => t.id.equals(folder.id)))
+        .write(SmartFoldersCompanion(name: drift.Value(newName)));
+    if (pageContext.mounted) {
+      ScaffoldMessenger.of(pageContext).showSnackBar(
+        SnackBar(content: Text('已重命名为「$newName」')),
+      );
+    }
   }
 
   void _confirmDelete(BuildContext context, SmartFolder folder) {
