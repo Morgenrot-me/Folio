@@ -10,7 +10,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drift/drift.dart' as drift;
-import '../../core/database/app_database.dart' hide Image;
+import '../../core/database/app_database.dart' as db_models; // 提供 db_models.Image
+import '../../core/database/app_database.dart' hide Image;     // 提供 AppDatabase 实例
 import '../search/search_screen.dart';
 import 'image_detail_screen.dart';
 
@@ -30,10 +31,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
   bool _hasMore = true;
   
   // 按照日期字符串分组的数据，彻底切断被数据库疯狂 watch() 刷新导致的卡顿
-  final Map<String, List<Image>> _groupedImages = {};
+  final Map<String, List<db_models.Image>> _groupedImages = {};
   
   // 方便在点击相片时，能将平铺的 List 传给详情页进行滑动预览
-  final List<Image> _flatImages = [];
+  final List<db_models.Image> _flatImages = [];
 
   @override
   void initState() {
