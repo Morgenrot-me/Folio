@@ -188,14 +188,14 @@ class MediaScannerService {
       for (final image in unanalyzed) {
         if (_isAnalysisCancelled) break;
 
-        // 获取该图片的缩略图（防 OOM）
-        final assets =
-            await PhotoManager.getAssetListRange(start: 0, end: 1);
-        // 直接用原始文件，thumbnail 逻辑在 extractFeaturesForImage 内部处理
+        // 核心瓶颈：执行单张图片的特征提取与底层 TFLite 推理
         await extractor.extractFeaturesForImage(image.id, image.filePath);
 
-        // 轻微延迟，避免 AI 推理占满主线程导致 UI 卡顿
-        await Future.delayed(_kAnalysisDelay);
+        // 🚀 提速与防卡顿点：增加主线程让位时间
+        // 因为 TFLite 和 ML Kit 本身的 FFI 同步开销大约在 30~50ms，
+        // 我们必须强行 await 较长时间，给 Flutter UI 预留至少几个渲染帧 (Render Frames) 的时间
+        // 来处理用户的相册滚动和触摸事件，保证绝对丝滑。
+        await Future.delayed(const Duration(milliseconds: 150));
       }
 
       // 全部分析完毕，触发规则匹配
