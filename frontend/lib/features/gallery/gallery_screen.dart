@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drift/drift.dart' as drift;
 import '../../core/database/app_database.dart' hide Image;
+import '../search/search_screen.dart';
 import 'image_detail_screen.dart';
 
 /// 每页加载的图片数量
@@ -55,7 +56,41 @@ class _GalleryScreenState extends State<GalleryScreen> {
     final db = context.read<AppDatabase>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('相册时光轴')),
+      appBar: AppBar(
+        title: const Text('相册时光轴'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(68),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: GestureDetector(
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen()));
+              },
+              child: Container(
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(26),
+                ),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 16),
+                    Icon(Icons.image_search_rounded, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 12),
+                    Text(
+                      '搜索地点、场景、物体...',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
       body: StreamBuilder(
         stream: (db.select(db.images)
               ..orderBy([(t) => drift.OrderingTerm.desc(t.indexedAt)])

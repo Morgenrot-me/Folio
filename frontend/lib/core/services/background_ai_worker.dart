@@ -16,6 +16,7 @@ import 'dart:typed_data';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:ui'; // DartPluginRegistrant
 import 'package:flutter/widgets.dart'; // WidgetsFlutterBinding
 import 'package:workmanager/workmanager.dart';
 import 'package:path/path.dart' as p;
@@ -56,7 +57,7 @@ void callbackDispatcher() {
   //   - rootBundle 无法加载模型文件（assets 不可访问）
   //   - TFLite / ML Kit 插件 Channel 未注册 → 推理失败
   WidgetsFlutterBinding.ensureInitialized();
-  // workmanager 0.9.x 自动注册所有插件，无需手动调用 DartPluginRegistrant
+  DartPluginRegistrant.ensureInitialized();
 
   Workmanager().executeTask((taskName, inputData) async {
     debugPrint('[BgWorker] 任务触发: $taskName');
@@ -236,7 +237,7 @@ class BackgroundAiWorker {
       kAiAnalysisTaskName,       // 唯一任务 ID（用于去重）
       kAiAnalysisTaskName,       // task name（传入 callbackDispatcher）
       tag: kAiAnalysisTaskTag,
-      existingWorkPolicy: ExistingWorkPolicy.keep,
+      existingWorkPolicy: ExistingWorkPolicy.replace, // 修复由于旧任务崩溃导致的队列长期卡死问题
       initialDelay: Duration(minutes: delayMinutes),
       constraints: Constraints(
         networkType: NetworkType.notRequired, // 纯本地AI，不需要网络（0.9.x camelCase）

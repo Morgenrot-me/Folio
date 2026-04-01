@@ -118,6 +118,7 @@ class _SearchScreenState extends State<SearchScreen> {
       child: TextField(
         controller: _controller,
         focusNode:  _focusNode,
+        autofocus:  true,
         onChanged:  _onQueryChanged,
         onSubmitted: (q) { _debounce?.cancel(); _search(q); },
         textInputAction: TextInputAction.search,

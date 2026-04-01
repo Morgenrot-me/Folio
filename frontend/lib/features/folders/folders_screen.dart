@@ -10,9 +10,11 @@ import 'package:provider/provider.dart';
 import 'package:drift/drift.dart' show Value;
 import '../../core/database/app_database.dart' hide Image;
 import '../../core/services/smart_folder_matcher_service.dart';
+import '../../core/services/cluster_service.dart';
 import '../../core/services/media_scanner_service.dart';
 import 'create_folder_screen.dart';
 import 'folder_detail_screen.dart';
+import 'clusters_tab_view.dart';
 
 class FoldersScreen extends StatefulWidget {
   const FoldersScreen({super.key});
@@ -26,93 +28,135 @@ class _FoldersScreenState extends State<FoldersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final database = context.read<AppDatabase>();
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('智能分类'),
-        actions: [
-          // 重新匹配按钮：触发规则引擎对全量图片重新归类
-          _isMatching
-              ? const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2.5)),
-                )
-              : IconButton(
-                  icon: const Icon(Icons.refresh_rounded),
-                  tooltip: '重新匹配所有规则',
-                  onPressed: _handleReMatch,
-                ),
-        ],
-      ),
-      body: StreamBuilder<List<SmartFolder>>(
-        stream: database.select(database.smartFolders).watch(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final folders = snapshot.data ?? [];
-          if (folders.isEmpty) return _buildEmptyState(context);
-
-          // 同时订阅文件夹图片数量流
-          return StreamBuilder<Map<String, int>>(
-            stream: database.watchFolderImageCounts(),
-            builder: (context, countSnap) {
-              final counts = countSnap.data ?? {};
-              return GridView.builder(
-                padding: const EdgeInsets.all(20),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: 1.05,
-                ),
-                itemCount: folders.length,
-                itemBuilder: (context, index) => _buildFolderCard(
-                  context,
-                  folders[index],
-                  counts[folders[index].id] ?? 0,
-                ),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('智能分类'),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: '规则分类'),
+              Tab(text: '智能相册集'),
+            ],
+          ),
+          actions: [
+            Builder(builder: (ctx) {
+              final tabController = DefaultTabController.of(ctx);
+              return AnimatedBuilder(
+                animation: tabController,
+                builder: (context, child) {
+                  return _isMatching
+                      ? const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5)),
+                        )
+                      : IconButton(
+                          icon: const Icon(Icons.refresh_rounded),
+                          tooltip: tabController.index == 0 ? '重新匹配规则' : '运行 AI 聚类',
+                          onPressed: () => _handleReMatch(tabController.index),
+                        );
+                },
               );
-            },
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.push(
-              context, MaterialPageRoute(builder: (_) => const CreateFolderScreen()));
-        },
-        icon: const Icon(Icons.create_new_folder_rounded),
-        label: const Text('新建分类'),
+            }),
+          ],
+        ),
+        body: TabBarView(
+          children: [
+            _buildRulesTab(),
+            const ClustersTabView(),
+          ],
+        ),
+        floatingActionButton: Builder(
+          builder: (ctx) {
+            final tabController = DefaultTabController.of(ctx);
+            return AnimatedBuilder(
+              animation: tabController,
+              builder: (context, child) {
+                if (tabController.index == 0) {
+                  return FloatingActionButton.extended(
+                    onPressed: () {
+                      Navigator.push(
+                          context, MaterialPageRoute(builder: (_) => const CreateFolderScreen()));
+                    },
+                    icon: const Icon(Icons.create_new_folder_rounded),
+                    label: const Text('新建分类'),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            );
+          },
+        ),
       ),
     );
   }
 
-  /// 触发全量规则重匹配
-  Future<void> _handleReMatch() async {
+  Widget _buildRulesTab() {
+    final database = context.read<AppDatabase>();
+    return StreamBuilder<List<SmartFolder>>(
+      stream: database.select(database.smartFolders).watch(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final folders = snapshot.data ?? [];
+        if (folders.isEmpty) return _buildEmptyState(context);
+
+        return StreamBuilder<Map<String, int>>(
+          stream: database.watchFolderImageCounts(),
+          builder: (context, countSnap) {
+            final counts = countSnap.data ?? {};
+            return GridView.builder(
+              padding: const EdgeInsets.all(20),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+                childAspectRatio: 1.05,
+              ),
+              itemCount: folders.length,
+              itemBuilder: (context, index) => _buildFolderCard(
+                context,
+                folders[index],
+                counts[folders[index].id] ?? 0,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// 触发全量规则重匹配或自动聚类
+  Future<void> _handleReMatch(int tabIndex) async {
     if (_isMatching) return;
     setState(() => _isMatching = true);
 
+    final isRules = tabIndex == 0;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('正在重新执行规则匹配...')),
+      SnackBar(content: Text(isRules ? '正在重新执行规则匹配...' : '正在执行全量 AI 聚类分析... (可能需要几秒到一分钟)')),
     );
     try {
-      final matcher = context.read<SmartFolderMatcherService>();
-      final matched = await matcher.runMatchForAll();
+      int matched = 0;
+      if (isRules) {
+        final matcher = context.read<SmartFolderMatcherService>();
+        matched = await matcher.runMatchForAll();
+      } else {
+        final clusterSvc = context.read<ClusterService>();
+        matched = await clusterSvc.runClustering();
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('✅ 匹配完成，共归类 $matched 张图片')),
+          SnackBar(content: Text('✅ 处理完成，共生成/匹配 $matched 个${isRules ? "张图片" : "相册聚类"}')),
         );
       }
     } catch (e) {
       if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('匹配失败：$e')),
+          SnackBar(content: Text('处理失败：$e')),
         );
       }
     } finally {

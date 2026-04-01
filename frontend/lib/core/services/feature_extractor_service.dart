@@ -13,6 +13,7 @@
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
@@ -137,22 +138,26 @@ class FeatureExtractorService {
     final isScreenshot =
         _screenshotKeywords.any((kw) => pathLower.contains(kw));
 
-    // ── 2. 解码图像（使用缩略图防止 OOM）
+    // ── 2. 底层 C++ (Skia/libjpeg-turbo) 降维解压解码
+    // 取代极为耗时（数秒）的纯 Dart 解压与缩小，直接在解码期生成 256x256 小图
     final targetBytes = thumbBytes ?? await file.readAsBytes();
-    final decodedImage = await compute(img.decodeImage, targetBytes);
+    final decodedImage = await _decodeMasterImageNative(targetBytes);
 
-    // ── 3. 并行：ML Kit 图像标注 + Places365 + 图像算法
+    // ── 3. 并行：ML Kit 图像标注 + Places365 + 图像算法 + MobileCLIP
     late List<String> mlkitTags;
     late List<String> places365Tags;
     Uint8List? semanticVector;
     double blurScore = 0.0;
     double colorWarmth = 0.0;
     double dominantHue = 0.0;
+    int? pHash;
+
+    Uint8List? clipVectorBytes;
 
     // ML Kit 可以直接用文件，无需等 decodedImage
     final mlkitFuture = _extractMlKitTags(file);
 
-    // Places365 + 图像算法需要 decodedImage
+    // Places365 + MobileCLIP + 图像算法需要 decodedImage
     if (decodedImage != null) {
       final results = await Future.wait([
         mlkitFuture,
@@ -161,6 +166,10 @@ class FeatureExtractorService {
           semanticVector = r.vector;
           return r.tags; // 返回值只是为了 wait 类型统一
         }),
+        _extractMobileCLIPVector(decodedImage).then((vec) {
+          clipVectorBytes = vec;
+          return <String>[];
+        }),
         compute(_calculateBlurScore, decodedImage).then((v) {
           blurScore = v;
           return <String>[];
@@ -168,6 +177,10 @@ class FeatureExtractorService {
         compute(_calculateColorFeatures, decodedImage).then((v) {
           dominantHue = v[0];
           colorWarmth = v[1];
+          return <String>[];
+        }),
+        compute(_calculatePHash, decodedImage).then((v) {
+          pHash = v;
           return <String>[];
         }),
       ]);
@@ -183,11 +196,7 @@ class FeatureExtractorService {
     final allTags = LabelNormalizer.normalize(rawTags, maxCount: 8);
     final tagsString = allTags.isNotEmpty ? allTags.join(', ') : null;
 
-    // ── 5. MobileCLIP 图像向量（Phase 2）———————————————————————————
-    Uint8List? clipVectorBytes;
-    if (decodedImage != null) {
-      clipVectorBytes = await _extractMobileCLIPVector(decodedImage);
-    }
+    // ── 5. (Phase 2 合并到了上面的 Future.wait 块中并行提取)
 
     // ── 6. 写库（ocrText 保持 NULL，待后台 OCR 阶段填充）
     await (database.update(database.images)
@@ -206,9 +215,42 @@ class FeatureExtractorService {
       clipVector:  clipVectorBytes != null
           ? Value(clipVectorBytes)
           : const Value.absent(),
+      phash:       pHash != null ? Value(pHash!) : const Value.absent(),
       // hasText 暂不更新（等 OCR 阶段填充）
       isAnalyzed:  const Value(true),
     ));
+  }
+
+  /// 使用 Flutter 原生底层 (C++ Skia/libjpeg-turbo) 高速解压并流式输出小分辨率贴图
+  Future<img.Image?> _decodeMasterImageNative(Uint8List bytes) async {
+    try {
+      final codec = await ui.instantiateImageCodec(
+        bytes,
+        targetWidth: 256,
+        targetHeight: 256,
+        allowUpscaling: false,
+      );
+      final frameInfo = await codec.getNextFrame();
+      final uiImage = frameInfo.image;
+      
+      final byteData = await uiImage.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final int uiWidth = uiImage.width;
+      final int uiHeight = uiImage.height;
+      uiImage.dispose(); // 及时释放 native GPU 句柄
+      codec.dispose();
+      
+      if (byteData == null) return null;
+      
+      return img.Image.fromBytes(
+        width: uiWidth,
+        height: uiHeight,
+        bytes: byteData.buffer,
+        numChannels: 4,
+      );
+    } catch (e) {
+      debugPrint('Native Decode Image failed: $e');
+      return null;
+    }
   }
 
   // ===========================================================================
@@ -423,6 +465,26 @@ class FeatureExtractorService {
       hue = 60.0 * (((r - g) / delta) + 4);
     }
     return hue < 0 ? hue + 360.0 : hue;
+  }
+
+  static int _calculatePHash(img.Image image) {
+    // aHash (Average Hash): 缩放到 8x8，转灰度并计算均值，生成 64 位指纹
+    final small = img.copyResize(image, width: 8, height: 8);
+    final gray = img.grayscale(small);
+    double sum = 0;
+    for (final p in gray) {
+      sum += p.r;
+    }
+    final avg = sum / 64;
+    int hash = 0;
+    int idx = 0;
+    for (final p in gray) {
+      if (p.r >= avg) {
+        hash |= (1 << idx);
+      }
+      idx++;
+    }
+    return hash;
   }
 
   // ===========================================================================

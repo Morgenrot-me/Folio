@@ -4,7 +4,7 @@ import 'package:drift/drift.dart';
 class Clusters extends Table {
   TextColumn get id => text()(); // UUID
   TextColumn get name => text()(); // 聚类名
-  BlobColumn get centroidVector => blob()(); // 中心特征向量 1000维 (float32x1000，与 MobileNet ImageNet 输出对齐)
+  BlobColumn get centroidVector => blob()(); // 中心特征向量 512维 (float32x512，与 MobileCLIP 语义空间对齐)
   IntColumn get imageCount => integer()();
   IntColumn get createdAt => integer()();
   BoolColumn get isUserNamed => boolean().withDefault(const Constant(false))();

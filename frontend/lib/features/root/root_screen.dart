@@ -7,7 +7,6 @@
 import 'package:flutter/material.dart';
 import '../home/home_screen.dart';
 import '../gallery/gallery_screen.dart';
-import '../search/search_screen.dart';
 import '../folders/folders_screen.dart';
 import '../settings/settings_screen.dart';
 
@@ -25,7 +24,6 @@ class _RootScreenState extends State<RootScreen> {
   final List<Widget> _pages = const [
     HomeScreen(),
     GalleryScreen(),
-    SearchScreen(),    // 语义搜索（MobileCLIP 文字检索）
     FoldersScreen(),
     SettingsScreen(),
   ];
@@ -52,11 +50,6 @@ class _RootScreenState extends State<RootScreen> {
             icon: Icon(Icons.photo_library_outlined),
             selectedIcon: Icon(Icons.photo_library_rounded),
             label: '相册',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.image_search_outlined),
-            selectedIcon: Icon(Icons.image_search_rounded),
-            label: '语义搜索',
           ),
           NavigationDestination(
             icon: Icon(Icons.folder_special_outlined),
