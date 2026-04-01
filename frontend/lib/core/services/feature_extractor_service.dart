@@ -1,14 +1,14 @@
 // feature_extractor_service.dart
-// AI 特征提取服务（双管线并行）：
+// AI 特征提取服务（三条管线）：
 //   管线一：ML Kit ImageLabeler（通用物体中文标签，bundled 离线）
 //   管线二：Places365 TFLite（场景地点中文标签，完全离线）
+//   管线三：MobileCLIP TFLite（512维语义向量，写入 clipVector 字段，支持文字搜索）
 // 附加特征：拉普拉斯模糊度 + HSL 主色调/冷暖度 + 截图路径检测
 // 标签后处理：LabelNormalizer 同义词合并 + 黑名单过滤
 //
 // 性能设计：
 //   - AI 阶段（extractFeaturesForImage）：跳过 OCR，ML Kit 与 Places365 并行执行
 //   - OCR 阶段（extractOcrForImage）：后台静默，过滤无意义内容再存库
-// Phase 2 预留：MobileCLIP TFLite 语义向量接口（代码槽位已注释保留）
 
 import 'dart:io';
 import 'dart:math';
@@ -62,8 +62,9 @@ class FeatureExtractorService {
   List<String> _places365Labels = [];
   bool _places365Ready = false;
 
-  /// Phase 2 占位符：MobileCLIP TFLite 解释器（模型文件就绪后启用）
+  // MobileCLIP TFLite 图像编码器（Phase 2）
   Interpreter? _mobileclipInterpreter;
+  bool _mobileclipReady = false;
 
   FeatureExtractorService(this.database) {
     _textRecognizer = TextRecognizer(script: TextRecognitionScript.chinese);
@@ -72,7 +73,7 @@ class FeatureExtractorService {
     );
   }
 
-  /// 初始化 Places365（懒加载，首次调用时执行）
+  /// 初始化 Places365（懒加载）
   Future<void> _initPlaces365IfNeeded() async {
     if (_places365Ready) return;
     try {
@@ -91,6 +92,21 @@ class FeatureExtractorService {
       debugPrint('Places365: 模型加载完成，标签 ${_places365Labels.length} 个');
     } catch (e) {
       debugPrint('Places365: 加载失败 => $e');
+    }
+  }
+
+  /// 初始化 MobileCLIP 图像编码器（懒加载）
+  Future<void> _initMobileCLIPIfNeeded() async {
+    if (_mobileclipReady) return;
+    try {
+      _mobileclipInterpreter = await Interpreter.fromAsset(
+        'assets/models/mobileclip_s1_vision.tflite',
+        options: InterpreterOptions()..threads = 2,
+      );
+      _mobileclipReady = true;
+      debugPrint('MobileCLIP Vision: 模型加载完成');
+    } catch (e) {
+      debugPrint('MobileCLIP Vision: 加载失败 => $e');
     }
   }
 
@@ -167,7 +183,13 @@ class FeatureExtractorService {
     final allTags = LabelNormalizer.normalize(rawTags, maxCount: 8);
     final tagsString = allTags.isNotEmpty ? allTags.join(', ') : null;
 
-    // ── 5. 写库（ocrText 保持 NULL，待后台 OCR 阶段填充）
+    // ── 5. MobileCLIP 图像向量（Phase 2）———————————————————————————
+    Uint8List? clipVectorBytes;
+    if (decodedImage != null) {
+      clipVectorBytes = await _extractMobileCLIPVector(decodedImage);
+    }
+
+    // ── 6. 写库（ocrText 保持 NULL，待后台 OCR 阶段填充）
     await (database.update(database.images)
           ..where((tbl) => tbl.id.equals(imageId)))
         .write(ImagesCompanion(
@@ -181,9 +203,11 @@ class FeatureExtractorService {
       tags:        tagsString != null
           ? Value(tagsString)
           : const Value.absent(),
+      clipVector:  clipVectorBytes != null
+          ? Value(clipVectorBytes)
+          : const Value.absent(),
       // hasText 暂不更新（等 OCR 阶段填充）
       isAnalyzed:  const Value(true),
-      // ocrText 保持 NULL（表示"待 OCR"）
     ));
   }
 
@@ -402,9 +426,52 @@ class FeatureExtractorService {
   }
 
   // ===========================================================================
-  // Phase 2 预留：MobileCLIP TFLite 语义向量
+  // MobileCLIP TFLite 图像语义向量（Phase 2）
   // ===========================================================================
-  // Future<Uint8List?> _extractMobileCLIPVector(img.Image image) async { ... }
+
+  /// MobileCLIP 预处理：ImageNet 均值与标准差（256x256 输入）
+  static const _mcMean = [0.485, 0.456, 0.406];
+  static const _mcStd  = [0.229, 0.224, 0.225];
+
+  /// 对单张图片运行 MobileCLIP 视觉编码器，返回 512 维 L2 归一化向量 BLOB
+  /// 若模型尚未就绪或推理失败，返回 null
+  Future<Uint8List?> _extractMobileCLIPVector(img.Image image) async {
+    await _initMobileCLIPIfNeeded();
+    if (!_mobileclipReady || _mobileclipInterpreter == null) return null;
+    try {
+      final input = await compute(_prepareMCInput, image);
+      // MobileCLIP 输入：[1, 256, 256, 3] float32
+      final output = [List<double>.filled(512, 0.0)];
+      _mobileclipInterpreter!.run(
+        input.reshape([1, 256, 256, 3]),
+        output,
+      );
+      final vec  = Float32List.fromList(output[0].cast<double>());
+      // L2 归一化（模型已内置，但防御性重归一化确保精度）
+      var norm   = 0.0;
+      for (final v in vec) norm += v * v;
+      norm = sqrt(norm);
+      if (norm > 1e-6) {
+        for (var i = 0; i < vec.length; i++) vec[i] /= norm;
+      }
+      return vec.buffer.asUint8List();
+    } catch (e) {
+      debugPrint('MobileCLIP 推理失败: $e');
+      return null;
+    }
+  }
+
+  static Float32List _prepareMCInput(img.Image image) {
+    final resized = img.copyResize(image, width: 256, height: 256);
+    final input   = Float32List(256 * 256 * 3);
+    var idx = 0;
+    for (final p in resized) {
+      input[idx++] = (p.r / 255.0 - _mcMean[0]) / _mcStd[0];
+      input[idx++] = (p.g / 255.0 - _mcMean[1]) / _mcStd[1];
+      input[idx++] = (p.b / 255.0 - _mcMean[2]) / _mcStd[2];
+    }
+    return input;
+  }
 }
 
 /// dart:math exp 的顶层别名，供 _softmax 调用

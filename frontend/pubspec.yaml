@@ -47,7 +47,7 @@ dependencies:
   crypto: ^3.0.5
   google_fonts: ^6.2.1
   google_mlkit_image_labeling: ^0.14.2
-  workmanager: ^0.5.2           # WorkManager 后台任务调度
+  workmanager: ^0.9.0           # WorkManager 后台任务调度（0.9.x兼容新版Flutter插件注册API）
   battery_plus: ^6.0.3          # 运行时读取电量，实现 ≥50% 约束
   shared_preferences: ^2.3.2    # 持久化用户设置（最低电量阈值等）
   app_settings: ^5.1.1          # 一键跳转系统设置页（电池优化、权限等）

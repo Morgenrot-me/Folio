@@ -1,24 +1,28 @@
 """
 convert_mobileclip.py
-MobileCLIP（Apple）图像编码器 PyTorch → ONNX → TFLite 转换脚本。
+MobileCLIP（Apple）图像编码器 + 文本编码器 PyTorch → ONNX → TFLite 转换脚本。
 
-只导出 图像编码器（Vision Encoder），输出 512 维语义向量。
+同时导出两个编码器：
+  - 图像编码器（Vision Encoder）：输入 [1,3,256,256]，输出 512 维语义向量
+  - 文本编码器（Text  Encoder）：输入 [1,77] int32 token IDs，输出 512 维语义向量
+
+两者输出在同一 MobileCLIP 语义空间，可直接做余弦相似度搜索。
 ✅ 不依赖 mobileclip 包，直接使用 open_clip_torch（已安装）加载模型。
 
 支持规格（open_clip_torch 3.3 内置）：
-  S1  ~ 25M 参数，推荐（S0 在 open_clip 中不可用）
+  S1  ~ 25M 参数，推荐
   S2  ~ 35M 参数，精度更高
   B   最大版本
 
-依赖安装：
+依赖：
   pip install onnx2tf sng4onnx --no-deps
-  （torch / torchvision / onnx / open_clip_torch / timm 已安装）
 
 使用方式：
   python scripts\\convert_mobileclip.py --model S1
 
 完成后复制到 frontend/assets/models/：
   scripts/mobileclip_s1_vision.tflite
+  scripts/mobileclip_s1_text.tflite
 """
 
 import os
@@ -123,7 +127,7 @@ def load_vision_encoder(model: str, weights_path: str, input_size: int):
 
         def forward(self, x):
             feat = self.visual(x)
-            return feat / feat.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+            return torch.nn.functional.normalize(feat, p=2.0, dim=-1)
 
     model_wrapped = VisionOnlyModel(vision)
     model_wrapped.eval()
@@ -146,28 +150,56 @@ def export_onnx(model, input_size: int, model_tag: str) -> str:
         model, dummy, onnx_path,
         input_names=['image'],
         output_names=['embedding'],
-        # 动态 batch（TFLite 转换时会固定为 batch=1）
-        dynamic_axes={'image': {0: 'batch'}, 'embedding': {0: 'batch'}},
-        opset_version=14,   # MobileCLIP 用了 GELU/SiLU，需要 >= 14
+        opset_version=17,
     )
     size_mb = os.path.getsize(onnx_path) / 1024 / 1024
     print(f'  ONNX 写入完成（{size_mb:.1f} MB）')
     return onnx_path
 
 
+def _ensure_param_json(json_path: str, model_lower: str) -> None:
+    """
+    确保 onnx2tf 的 param_replacement_file 存在。
+    该文件用于绕过 tf.norm(axis=np.int64) 兼容性 bug：
+    将 ReduceL2 / linalg_vector_norm 节点的 keepdims 强制为整数 0。
+    """
+    import json as _json
+    if os.path.exists(json_path):
+        return  # 已存在（可能是 onnx2tf 自动生成的），直接复用
+    payload = {
+        "format_version": 1,
+        "operations": [
+            {
+                "op_name": f"node_linalg_vector_norm",
+                "param_target": "attributes",
+                "param_name": "keepdims",
+                "values": 0
+            }
+        ],
+        "_comment": f"Auto-created for {model_lower}: 绕过 axis=np.int64 bug"
+    }
+    with open(json_path, 'w', encoding='utf-8') as fp:
+        _json.dump(payload, fp, ensure_ascii=False, indent=2)
+    print(f'  创建 param_replacement_file: {json_path}')
+
+
 def export_tflite(onnx_path: str, model_tag: str) -> str:
     """ONNX → TFLite（via onnx2tf）"""
-    tf_dir = os.path.join(SCRIPT_DIR, f'mobileclip_{model_tag.lower()}_tf')
+    model_lower = model_tag.lower()
+    tf_dir = os.path.join(SCRIPT_DIR, f'mobileclip_{model_lower}_tf')
     tflite_out = os.path.join(SCRIPT_DIR,
-                              f'mobileclip_{model_tag.lower()}_vision.tflite')
+                              f'mobileclip_{model_lower}_vision.tflite')
+    param_json = os.path.join(SCRIPT_DIR, f'mobileclip_{model_lower}_vision_auto.json')
 
     print(f'[4/4] onnx2tf 转换 TFLite（约 1-3 分钟）...')
     os.makedirs(tf_dir, exist_ok=True)
+    _ensure_param_json(param_json, model_lower)
 
     onnx2tf.convert(
         input_onnx_file_path=onnx_path,
         output_folder_path=tf_dir,
         non_verbose=True,
+        param_replacement_file=param_json,
     )
 
     # 查找输出 .tflite
@@ -187,33 +219,141 @@ def export_tflite(onnx_path: str, model_tag: str) -> str:
     return tflite_out
 
 
+# =============================================================================
+# 文本编码器导出
+# =============================================================================
+
+class TextOnlyModel(torch.nn.Module):
+    """
+    MobileCLIP 纯文本编码器包装。
+    输入：[1, 77] int32 token IDs（CLIP BPE tokenizer 输出）
+    输出：[1, 512]，L2 归一化文本语义向量
+    与 VisionOnlyModel 输出在同一语义空间，可直接做余弦相似度。
+    """
+    def __init__(self, clip_model):
+        super().__init__()
+        self.token_embedding   = clip_model.token_embedding
+        self.positional_embedding = clip_model.positional_embedding
+        self.transformer       = clip_model.transformer
+        self.ln_final          = clip_model.ln_final
+        self.text_projection   = clip_model.text_projection
+        # 预计算因果注意力掩码（bake-in，避免 ONNX 追踪为输入）
+        ctx_len = 77
+        mask = torch.empty(ctx_len, ctx_len).fill_(float('-inf')).triu_(1)
+        self.register_buffer('attn_mask', mask)
+
+    def forward(self, text: torch.Tensor) -> torch.Tensor:
+        # text: [B, 77] int64
+        x = self.token_embedding(text).float()      # [B, 77, d_model]
+        x = x + self.positional_embedding[:x.shape[1]]
+        x = x.permute(1, 0, 2)                     # NLD -> LND
+        x = self.transformer(x, attn_mask=self.attn_mask)
+        x = x.permute(1, 0, 2)                     # LND -> NLD
+        x = self.ln_final(x).float()
+        # 取 EOT（end-of-text）位置的特征 —— EOT token ID 是序列中最大值
+        eot_pos = text.argmax(dim=-1)               # [B]
+        x = x[torch.arange(x.shape[0]), eot_pos] @ self.text_projection
+        return torch.nn.functional.normalize(x, p=2.0, dim=-1)
+
+
+def load_text_encoder(model_tag: str, weights_path: str):
+    """从已下载的权重文件加载 MobileCLIP 文本编码器。"""
+    import open_clip
+    clip_name = _CLIP_NAMES[model_tag]
+    print(f'[T-1] 加载文本编码器来自 {clip_name}...')
+    clip_model, _, _ = open_clip.create_model_and_transforms(
+        clip_name, pretrained=weights_path,
+    )
+    clip_model.eval()
+    text_model = TextOnlyModel(clip_model)
+    text_model.eval()
+    # 验证输出维度
+    with torch.no_grad():
+        dummy = torch.zeros(1, 77, dtype=torch.long)
+        dummy[0, 0] = 49406  # SOT
+        dummy[0, 1] = 49407  # EOT（最简单的有效序列）
+        out = text_model(dummy)
+        print(f'  文本编码器输出维度：{out.shape}  （应为 [1, 512]）')
+    return text_model
+
+
+def export_text_onnx(text_model, model_tag: str) -> str:
+    """文本编码器 PyTorch → ONNX"""
+    onnx_path = os.path.join(SCRIPT_DIR, f'mobileclip_{model_tag.lower()}_text.onnx')
+    print(f'[T-2] 导出文本编码器 ONNX → {onnx_path}')
+    dummy = torch.zeros(1, 77, dtype=torch.long)
+    dummy[0, 0] = 49406
+    dummy[0, 1] = 49407
+    torch.onnx.export(
+        text_model, dummy, onnx_path,
+        input_names=['token_ids'],
+        output_names=['text_embedding'],
+        opset_version=17,
+    )
+    size_mb = os.path.getsize(onnx_path) / 1024 / 1024
+    print(f'  ONNX 写入完成（{size_mb:.1f} MB）')
+    return onnx_path
+
+
+def export_text_tflite(onnx_path: str, model_tag: str) -> str:
+    """文本编码器 ONNX → TFLite（via onnx2tf）"""
+    model_lower = model_tag.lower()
+    tf_dir    = os.path.join(SCRIPT_DIR, f'mobileclip_{model_lower}_text_tf')
+    tflite_out = os.path.join(SCRIPT_DIR, f'mobileclip_{model_lower}_text.tflite')
+    param_json = os.path.join(SCRIPT_DIR, f'mobileclip_{model_lower}_text_auto.json')
+    print(f'[T-3] onnx2tf 转换文本编码器 TFLite（约 1-2 分钟）...')
+    os.makedirs(tf_dir, exist_ok=True)
+    _ensure_param_json(param_json, model_lower)
+    onnx2tf.convert(
+        input_onnx_file_path=onnx_path,
+        output_folder_path=tf_dir,
+        non_verbose=True,
+        param_replacement_file=param_json,
+    )
+    src = None
+    for fname in os.listdir(tf_dir):
+        if fname.endswith('.tflite'):
+            src = os.path.join(tf_dir, fname)
+            break
+    if src is None:
+        print(f'[ERROR] 未找到文本编码器 .tflite，请检查目录：{tf_dir}')
+        sys.exit(1)
+    shutil.copy2(src, tflite_out)
+    size_mb = os.path.getsize(tflite_out) / 1024 / 1024
+    print(f'  TFLite 写入完成 → {tflite_out}（{size_mb:.1f} MB）')
+    return tflite_out
+
+
 def main():
     args = parse_args()
-    model_tag = args.model
+    model_tag  = args.model
     input_size = args.input_size
 
-    # 1. 下载权重
+    # ── 1. 下载权重（图像 + 文本共享同一权重文件）
     weights_path = download_weights(model_tag)
 
-    # 2. 加载图像编码器
-    vision_model = load_vision_encoder(model_tag, weights_path, input_size)
+    # ── 2a. 图像编码器：加载 → ONNX → TFLite
+    vision_model  = load_vision_encoder(model_tag, weights_path, input_size)
+    vision_onnx   = export_onnx(vision_model, input_size, model_tag)
+    vision_tflite = export_tflite(vision_onnx, model_tag)
 
-    # 3. 导出 ONNX
-    onnx_path = export_onnx(vision_model, input_size, model_tag)
+    # ── 2b. 文本编码器：加载 → ONNX → TFLite
+    text_model    = load_text_encoder(model_tag, weights_path)
+    text_onnx     = export_text_onnx(text_model, model_tag)
+    text_tflite   = export_text_tflite(text_onnx, model_tag)
 
-    # 4. 转换 TFLite
-    tflite_path = export_tflite(onnx_path, model_tag)
-
-    # 完成提示
-    dest = f'frontend\\assets\\models\\mobileclip_{model_tag.lower()}_vision.tflite'
+    # ── 完成提示
+    tag = model_tag.lower()
     print()
     print('=' * 60)
-    print('✅ 完成！请执行以下命令：')
-    print(f'  copy "{tflite_path}" {dest}')
+    print('✅ 全部完成！请将以下文件复制到 frontend/assets/models/：')
+    print(f'  copy "{vision_tflite}" frontend\\assets\\models\\mobileclip_{tag}_vision.tflite')
+    print(f'  copy "{text_tflite}"   frontend\\assets\\models\\mobileclip_{tag}_text.tflite')
     print()
-    print('然后告诉 AI 助手「MobileCLIP 文件已就绪」')
+    print('然后运行 export_clip_tokenizer.py 导出词表文件。')
     print('=' * 60)
 
 
 if __name__ == '__main__':
     main()
+

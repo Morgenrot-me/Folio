@@ -209,6 +209,17 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, Image> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _clipVectorMeta = const VerificationMeta(
+    'clipVector',
+  );
+  @override
+  late final GeneratedColumn<Uint8List> clipVector = GeneratedColumn<Uint8List>(
+    'clip_vector',
+    aliasedName,
+    true,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _clusterIdMeta = const VerificationMeta(
     'clusterId',
   );
@@ -258,6 +269,7 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, Image> {
     dominantHue,
     colorWarmth,
     isAnalyzed,
+    clipVector,
     clusterId,
     gpsLat,
     gpsLon,
@@ -413,6 +425,12 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, Image> {
         isAnalyzed.isAcceptableOrUnknown(data['is_analyzed']!, _isAnalyzedMeta),
       );
     }
+    if (data.containsKey('clip_vector')) {
+      context.handle(
+        _clipVectorMeta,
+        clipVector.isAcceptableOrUnknown(data['clip_vector']!, _clipVectorMeta),
+      );
+    }
     if (data.containsKey('cluster_id')) {
       context.handle(
         _clusterIdMeta,
@@ -512,6 +530,10 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, Image> {
         DriftSqlType.bool,
         data['${effectivePrefix}is_analyzed'],
       )!,
+      clipVector: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}clip_vector'],
+      ),
       clusterId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}cluster_id'],
@@ -559,6 +581,11 @@ class Image extends DataClass implements Insertable<Image> {
 
   /// v3: 可靠标记 AI 特征提取管线是否完整跑过，替代不可靠的 blurScore==0 判断
   final bool isAnalyzed;
+
+  /// v5: MobileCLIP 图像语义向量（512维 float32 BLOB）
+  ///   与文字编码器在同一 CLIP 语义空间，支持余弦相似度文字搜索
+  ///   NULL = 尚未跑 MobileCLIP 推理
+  final Uint8List? clipVector;
   final String? clusterId;
   final double? gpsLat;
   final double? gpsLon;
@@ -581,6 +608,7 @@ class Image extends DataClass implements Insertable<Image> {
     required this.dominantHue,
     required this.colorWarmth,
     required this.isAnalyzed,
+    this.clipVector,
     this.clusterId,
     this.gpsLat,
     this.gpsLon,
@@ -614,6 +642,9 @@ class Image extends DataClass implements Insertable<Image> {
     map['dominant_hue'] = Variable<double>(dominantHue);
     map['color_warmth'] = Variable<double>(colorWarmth);
     map['is_analyzed'] = Variable<bool>(isAnalyzed);
+    if (!nullToAbsent || clipVector != null) {
+      map['clip_vector'] = Variable<Uint8List>(clipVector);
+    }
     if (!nullToAbsent || clusterId != null) {
       map['cluster_id'] = Variable<String>(clusterId);
     }
@@ -652,6 +683,9 @@ class Image extends DataClass implements Insertable<Image> {
       dominantHue: Value(dominantHue),
       colorWarmth: Value(colorWarmth),
       isAnalyzed: Value(isAnalyzed),
+      clipVector: clipVector == null && nullToAbsent
+          ? const Value.absent()
+          : Value(clipVector),
       clusterId: clusterId == null && nullToAbsent
           ? const Value.absent()
           : Value(clusterId),
@@ -688,6 +722,7 @@ class Image extends DataClass implements Insertable<Image> {
       dominantHue: serializer.fromJson<double>(json['dominantHue']),
       colorWarmth: serializer.fromJson<double>(json['colorWarmth']),
       isAnalyzed: serializer.fromJson<bool>(json['isAnalyzed']),
+      clipVector: serializer.fromJson<Uint8List?>(json['clipVector']),
       clusterId: serializer.fromJson<String?>(json['clusterId']),
       gpsLat: serializer.fromJson<double?>(json['gpsLat']),
       gpsLon: serializer.fromJson<double?>(json['gpsLon']),
@@ -715,6 +750,7 @@ class Image extends DataClass implements Insertable<Image> {
       'dominantHue': serializer.toJson<double>(dominantHue),
       'colorWarmth': serializer.toJson<double>(colorWarmth),
       'isAnalyzed': serializer.toJson<bool>(isAnalyzed),
+      'clipVector': serializer.toJson<Uint8List?>(clipVector),
       'clusterId': serializer.toJson<String?>(clusterId),
       'gpsLat': serializer.toJson<double?>(gpsLat),
       'gpsLon': serializer.toJson<double?>(gpsLon),
@@ -740,6 +776,7 @@ class Image extends DataClass implements Insertable<Image> {
     double? dominantHue,
     double? colorWarmth,
     bool? isAnalyzed,
+    Value<Uint8List?> clipVector = const Value.absent(),
     Value<String?> clusterId = const Value.absent(),
     Value<double?> gpsLat = const Value.absent(),
     Value<double?> gpsLon = const Value.absent(),
@@ -762,6 +799,7 @@ class Image extends DataClass implements Insertable<Image> {
     dominantHue: dominantHue ?? this.dominantHue,
     colorWarmth: colorWarmth ?? this.colorWarmth,
     isAnalyzed: isAnalyzed ?? this.isAnalyzed,
+    clipVector: clipVector.present ? clipVector.value : this.clipVector,
     clusterId: clusterId.present ? clusterId.value : this.clusterId,
     gpsLat: gpsLat.present ? gpsLat.value : this.gpsLat,
     gpsLon: gpsLon.present ? gpsLon.value : this.gpsLon,
@@ -796,6 +834,9 @@ class Image extends DataClass implements Insertable<Image> {
       isAnalyzed: data.isAnalyzed.present
           ? data.isAnalyzed.value
           : this.isAnalyzed,
+      clipVector: data.clipVector.present
+          ? data.clipVector.value
+          : this.clipVector,
       clusterId: data.clusterId.present ? data.clusterId.value : this.clusterId,
       gpsLat: data.gpsLat.present ? data.gpsLat.value : this.gpsLat,
       gpsLon: data.gpsLon.present ? data.gpsLon.value : this.gpsLon,
@@ -823,6 +864,7 @@ class Image extends DataClass implements Insertable<Image> {
           ..write('dominantHue: $dominantHue, ')
           ..write('colorWarmth: $colorWarmth, ')
           ..write('isAnalyzed: $isAnalyzed, ')
+          ..write('clipVector: $clipVector, ')
           ..write('clusterId: $clusterId, ')
           ..write('gpsLat: $gpsLat, ')
           ..write('gpsLon: $gpsLon')
@@ -850,6 +892,7 @@ class Image extends DataClass implements Insertable<Image> {
     dominantHue,
     colorWarmth,
     isAnalyzed,
+    $driftBlobEquality.hash(clipVector),
     clusterId,
     gpsLat,
     gpsLon,
@@ -879,6 +922,7 @@ class Image extends DataClass implements Insertable<Image> {
           other.dominantHue == this.dominantHue &&
           other.colorWarmth == this.colorWarmth &&
           other.isAnalyzed == this.isAnalyzed &&
+          $driftBlobEquality.equals(other.clipVector, this.clipVector) &&
           other.clusterId == this.clusterId &&
           other.gpsLat == this.gpsLat &&
           other.gpsLon == this.gpsLon);
@@ -903,6 +947,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
   final Value<double> dominantHue;
   final Value<double> colorWarmth;
   final Value<bool> isAnalyzed;
+  final Value<Uint8List?> clipVector;
   final Value<String?> clusterId;
   final Value<double?> gpsLat;
   final Value<double?> gpsLon;
@@ -926,6 +971,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     this.dominantHue = const Value.absent(),
     this.colorWarmth = const Value.absent(),
     this.isAnalyzed = const Value.absent(),
+    this.clipVector = const Value.absent(),
     this.clusterId = const Value.absent(),
     this.gpsLat = const Value.absent(),
     this.gpsLon = const Value.absent(),
@@ -950,6 +996,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     required double dominantHue,
     required double colorWarmth,
     this.isAnalyzed = const Value.absent(),
+    this.clipVector = const Value.absent(),
     this.clusterId = const Value.absent(),
     this.gpsLat = const Value.absent(),
     this.gpsLon = const Value.absent(),
@@ -984,6 +1031,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     Expression<double>? dominantHue,
     Expression<double>? colorWarmth,
     Expression<bool>? isAnalyzed,
+    Expression<Uint8List>? clipVector,
     Expression<String>? clusterId,
     Expression<double>? gpsLat,
     Expression<double>? gpsLon,
@@ -1008,6 +1056,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
       if (dominantHue != null) 'dominant_hue': dominantHue,
       if (colorWarmth != null) 'color_warmth': colorWarmth,
       if (isAnalyzed != null) 'is_analyzed': isAnalyzed,
+      if (clipVector != null) 'clip_vector': clipVector,
       if (clusterId != null) 'cluster_id': clusterId,
       if (gpsLat != null) 'gps_lat': gpsLat,
       if (gpsLon != null) 'gps_lon': gpsLon,
@@ -1034,6 +1083,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     Value<double>? dominantHue,
     Value<double>? colorWarmth,
     Value<bool>? isAnalyzed,
+    Value<Uint8List?>? clipVector,
     Value<String?>? clusterId,
     Value<double?>? gpsLat,
     Value<double?>? gpsLon,
@@ -1058,6 +1108,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
       dominantHue: dominantHue ?? this.dominantHue,
       colorWarmth: colorWarmth ?? this.colorWarmth,
       isAnalyzed: isAnalyzed ?? this.isAnalyzed,
+      clipVector: clipVector ?? this.clipVector,
       clusterId: clusterId ?? this.clusterId,
       gpsLat: gpsLat ?? this.gpsLat,
       gpsLon: gpsLon ?? this.gpsLon,
@@ -1122,6 +1173,9 @@ class ImagesCompanion extends UpdateCompanion<Image> {
     if (isAnalyzed.present) {
       map['is_analyzed'] = Variable<bool>(isAnalyzed.value);
     }
+    if (clipVector.present) {
+      map['clip_vector'] = Variable<Uint8List>(clipVector.value);
+    }
     if (clusterId.present) {
       map['cluster_id'] = Variable<String>(clusterId.value);
     }
@@ -1158,6 +1212,7 @@ class ImagesCompanion extends UpdateCompanion<Image> {
           ..write('dominantHue: $dominantHue, ')
           ..write('colorWarmth: $colorWarmth, ')
           ..write('isAnalyzed: $isAnalyzed, ')
+          ..write('clipVector: $clipVector, ')
           ..write('clusterId: $clusterId, ')
           ..write('gpsLat: $gpsLat, ')
           ..write('gpsLon: $gpsLon, ')
@@ -3238,6 +3293,7 @@ typedef $$ImagesTableCreateCompanionBuilder =
       required double dominantHue,
       required double colorWarmth,
       Value<bool> isAnalyzed,
+      Value<Uint8List?> clipVector,
       Value<String?> clusterId,
       Value<double?> gpsLat,
       Value<double?> gpsLon,
@@ -3263,6 +3319,7 @@ typedef $$ImagesTableUpdateCompanionBuilder =
       Value<double> dominantHue,
       Value<double> colorWarmth,
       Value<bool> isAnalyzed,
+      Value<Uint8List?> clipVector,
       Value<String?> clusterId,
       Value<double?> gpsLat,
       Value<double?> gpsLon,
@@ -3388,6 +3445,11 @@ class $$ImagesTableFilterComposer
 
   ColumnFilters<bool> get isAnalyzed => $composableBuilder(
     column: $table.isAnalyzed,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get clipVector => $composableBuilder(
+    column: $table.clipVector,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3531,6 +3593,11 @@ class $$ImagesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<Uint8List> get clipVector => $composableBuilder(
+    column: $table.clipVector,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get clusterId => $composableBuilder(
     column: $table.clusterId,
     builder: (column) => ColumnOrderings(column),
@@ -3620,6 +3687,11 @@ class $$ImagesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<Uint8List> get clipVector => $composableBuilder(
+    column: $table.clipVector,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get clusterId =>
       $composableBuilder(column: $table.clusterId, builder: (column) => column);
 
@@ -3701,6 +3773,7 @@ class $$ImagesTableTableManager
                 Value<double> dominantHue = const Value.absent(),
                 Value<double> colorWarmth = const Value.absent(),
                 Value<bool> isAnalyzed = const Value.absent(),
+                Value<Uint8List?> clipVector = const Value.absent(),
                 Value<String?> clusterId = const Value.absent(),
                 Value<double?> gpsLat = const Value.absent(),
                 Value<double?> gpsLon = const Value.absent(),
@@ -3724,6 +3797,7 @@ class $$ImagesTableTableManager
                 dominantHue: dominantHue,
                 colorWarmth: colorWarmth,
                 isAnalyzed: isAnalyzed,
+                clipVector: clipVector,
                 clusterId: clusterId,
                 gpsLat: gpsLat,
                 gpsLon: gpsLon,
@@ -3749,6 +3823,7 @@ class $$ImagesTableTableManager
                 required double dominantHue,
                 required double colorWarmth,
                 Value<bool> isAnalyzed = const Value.absent(),
+                Value<Uint8List?> clipVector = const Value.absent(),
                 Value<String?> clusterId = const Value.absent(),
                 Value<double?> gpsLat = const Value.absent(),
                 Value<double?> gpsLon = const Value.absent(),
@@ -3772,6 +3847,7 @@ class $$ImagesTableTableManager
                 dominantHue: dominantHue,
                 colorWarmth: colorWarmth,
                 isAnalyzed: isAnalyzed,
+                clipVector: clipVector,
                 clusterId: clusterId,
                 gpsLat: gpsLat,
                 gpsLon: gpsLon,

@@ -325,7 +325,7 @@ class _FoldersScreenState extends State<FoldersScreen> {
     Navigator.pop(dialogContext);
     final db = pageContext.read<AppDatabase>();
     await (db.update(db.smartFolders)..where((t) => t.id.equals(folder.id)))
-        .write(SmartFoldersCompanion(name: drift.Value(newName)));
+        .write(SmartFoldersCompanion(name: Value(newName)));
     if (pageContext.mounted) {
       ScaffoldMessenger.of(pageContext).showSnackBar(
         SnackBar(content: Text('已重命名为「$newName」')),

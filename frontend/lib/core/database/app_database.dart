@@ -28,7 +28,7 @@ class AppDatabase extends _$AppDatabase {
         ));
 
   @override
-  int get schemaVersion => 4; // v4：新增 ocrText 字段（后台静默 OCR 结果）
+  int get schemaVersion => 5; // v5：新增 clip_vector（MobileCLIP 语义向量，用于文字语义搜索）
 
   @override
   MigrationStrategy get migration {
@@ -50,6 +50,11 @@ class AppDatabase extends _$AppDatabase {
           // v4：新增 OCR 文字字段，用原生 SQL 规避 addColumn 泛型限制
           await customStatement(
               'ALTER TABLE images ADD COLUMN ocr_text TEXT');
+        }
+        if (from < 5) {
+          // v5：新增 MobileCLIP 语义向量（CLIP 空间，512维 float32 BLOB）
+          await customStatement(
+              'ALTER TABLE images ADD COLUMN clip_vector BLOB');
         }
       },
     );

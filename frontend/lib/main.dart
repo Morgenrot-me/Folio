@@ -11,6 +11,7 @@ import 'core/services/feature_extractor_service.dart';
 import 'core/services/media_scanner_service.dart';
 import 'core/services/smart_folder_matcher_service.dart';
 import 'core/services/background_ai_worker.dart';
+import 'core/services/semantic_search_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,10 +20,11 @@ void main() async {
   await BackgroundAiWorker.initialize();
 
   // ── 2. 初始化前台服务
-  final database = AppDatabase();
-  final featureExtractor = FeatureExtractorService(database);
-  final matcher = SmartFolderMatcherService(database);
-  final scannerService = MediaScannerService(database, featureExtractor, matcher);
+  final database          = AppDatabase();
+  final featureExtractor  = FeatureExtractorService(database);
+  final matcher           = SmartFolderMatcherService(database);
+  final scannerService    = MediaScannerService(database, featureExtractor, matcher);
+  final semanticSearch    = SemanticSearchService(database);
 
   // ── 3. 断点续传：App 启动时检查是否有未分析图片，若有则自动调度后台任务
   //   场景：用户上次扫描中途关闭 App、手机重启等情况均能自动恢复
@@ -43,6 +45,7 @@ void main() async {
         Provider<FeatureExtractorService>.value(value: featureExtractor),
         Provider<SmartFolderMatcherService>.value(value: matcher),
         Provider<MediaScannerService>.value(value: scannerService),
+        Provider<SemanticSearchService>.value(value: semanticSearch),
       ],
       child: const SmartGalleryApp(),
     ),

@@ -2,10 +2,12 @@
 // 根页面：使用 NavigationBar（Material 3）+ IndexedStack。
 // IndexedStack 保留各 Tab 状态（不在切换时重建），页面切换无动画跳跃感。
 // 每个子页面自带 Scaffold（AppBar 各自独立），RootScreen 本身不再嵌套 Scaffold body。
+// v2: 新增「语义搜索」Tab，使用 MobileCLIP 文本编码器实现自然语言图片检索。
 
 import 'package:flutter/material.dart';
 import '../home/home_screen.dart';
 import '../gallery/gallery_screen.dart';
+import '../search/search_screen.dart';
 import '../folders/folders_screen.dart';
 import '../settings/settings_screen.dart';
 
@@ -23,6 +25,7 @@ class _RootScreenState extends State<RootScreen> {
   final List<Widget> _pages = const [
     HomeScreen(),
     GalleryScreen(),
+    SearchScreen(),    // 语义搜索（MobileCLIP 文字检索）
     FoldersScreen(),
     SettingsScreen(),
   ];
@@ -48,7 +51,12 @@ class _RootScreenState extends State<RootScreen> {
           NavigationDestination(
             icon: Icon(Icons.photo_library_outlined),
             selectedIcon: Icon(Icons.photo_library_rounded),
-            label: '相册时光轴',
+            label: '相册',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.image_search_outlined),
+            selectedIcon: Icon(Icons.image_search_rounded),
+            label: '语义搜索',
           ),
           NavigationDestination(
             icon: Icon(Icons.folder_special_outlined),
