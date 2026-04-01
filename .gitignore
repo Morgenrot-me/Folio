@@ -1,0 +1,33 @@
+# Python 虚拟环境（不入库，体积巨大）
+.venv_ml/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# 模型中间文件（ONNX + TF 目录，只保留最终 tflite）
+scripts/*.onnx
+scripts/*_tf/
+scripts/__pycache__/
+
+# Flutter/Dart
+frontend/.dart_tool/
+frontend/build/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.packages
+frontend/pubspec.lock
+
+# Android
+frontend/android/.gradle/
+frontend/android/local.properties
+frontend/android/app/debug/
+frontend/android/captures/
+
+# IDE
+.idea/
+*.iml
+*.iws
+.DS_Store
+Thumbs.db
