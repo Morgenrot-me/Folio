@@ -6,28 +6,32 @@ __pycache__/
 *.pyc
 *.pyo
 
-# 模型中间文件（ONNX + TF 目录，只保留最终 tflite）
+# 模型权重与中间文件（大文件，不入库）
+scripts/*.pt
 scripts/*.onnx
+scripts/*.onnx.data
 scripts/*_tf/
+scripts/*_vision.tflite
+scripts/*_text.tflite
+scripts/places365_resnet18.tflite
 scripts/__pycache__/
+
+# Flutter assets 中的模型文件（大文件，需手动复制到设备）
+frontend/assets/models/*.tflite
+frontend/assets/models/clip_vocab.json
 
 # Flutter/Dart
 frontend/.dart_tool/
 frontend/build/
 frontend/.flutter-plugins
 frontend/.flutter-plugins-dependencies
-frontend/.packages
-frontend/pubspec.lock
 
 # Android
 frontend/android/.gradle/
 frontend/android/local.properties
-frontend/android/app/debug/
-frontend/android/captures/
 
 # IDE
 .idea/
 *.iml
-*.iws
 .DS_Store
 Thumbs.db
