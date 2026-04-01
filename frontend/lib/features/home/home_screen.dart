@@ -392,10 +392,14 @@ class _HomeScreenState extends State<HomeScreen>
         SnackBar(content: Text('✅ 入库完成，新增 $newCount 张！AI 分析已加入后台队列')),
       );
 
-      // ── Phase 2：调度 WorkManager 后台任务 ──────────────────────
-      // 任务在系统层运行，用户关闭 App 后继续分析
-      // 电量≥ 50% 才运行（在 callbackDispatcher 内部检查）
+      // ── Phase 2：调度后台系统队列 + 立即强制拉起前台 AI 线程 ───────
+      // 1. Android WorkManager 有时会受限于 JobScheduler 策略（如省电模式）排队延迟数十分钟，
+      //    这里我们保留它作为 App 被杀后的“系统级兜底”。
       await BackgroundAiWorker.schedule();
+
+      // 2. BUG FIX: 并行且不阻塞地立刻丢给 Dart 的微任务队列去启动前台分析，
+      //    这样只要您还看着 App，AI 提取流立刻就会滚滚向前！
+      scanner.analyzeUnanalyzedImages();
 
     } catch (e) {
       if (mounted) {

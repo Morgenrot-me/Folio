@@ -110,7 +110,9 @@ class MediaScannerService {
         final file = files[i];
         if (file == null) continue;
 
-        final idHash = sha256.convert(utf8.encode(file.absolute.path)).toString();
+        // BUG FIX: file.absolute.path 在 Android 10+ 可能会指向动态生成的 cache 目录，
+        // 导致同一张图每次扫的路径不一样。必须使用永久固定的 entity.id 做哈希键！
+        final idHash = sha256.convert(utf8.encode(entity.id)).toString();
         
         // 内存级比对，如果是已存在于 DB 或者已在此批内的图片，直接跳过
         if (existingIds.contains(idHash)) continue;
